@@ -65,6 +65,7 @@ export const LOG_KEPT = 20;
 import {
   newFarm, advance, plotOf, emptyPlot, levelOf, expFor, progressTo, chores, ripePlots,
   isFarming, sow, water, weed, pest, harvest, pick, clear, steal, openLand, upgradeLand,
+  sowWeeds, sowPests, resetQuota, BAD_PER_DAY, BAD_MAX_PER_PLOT,
   seedsFor, cropById, sellPriceOf, seedPriceOf,
   SPEED, PLANT_EXP, HELP_COIN, HELP_EXP, STEAL_MIN_COIN, DAILY_COIN, STARTING_COIN,
   MAX_PLOTS, CROPS,
@@ -320,7 +321,7 @@ export async function run(token, { signal, api = API } = {}) {
     const farm = farmOf(screen.userId, screen.displayName);
     farm.touched = now;
     const ranch = farm.ranch ?? (farm.ranch = newRanch(now));
-    const moved = advance(farm, now);
+    const moved = resetQuota(advance(farm, now), dayIn(now));
     const grazed = graze(ranch, now);
     farms.set(screen.userId, { ...moved, ranch: grazed });
 
@@ -418,6 +419,9 @@ export async function run(token, { signal, api = API } = {}) {
         taken: farm.claimed === dayIn(now),
         worth: DAILY_COIN,
       },
+      // Hạn mức trong ngày: bao nhiêu lần còn được gieo cỏ lên ruộng người khác. Con số ấy phải
+      // tới được cái khung, không thì cái nút chỉ có thể nói "không được" mà không nói được vì sao.
+      badLeft: farm.badLeft ?? BAD_PER_DAY,
       log: (farm.log ?? []).slice(0, LOG_KEPT),
     };
   }
@@ -559,7 +563,7 @@ export async function run(token, { signal, api = API } = {}) {
 
     const farm = farmOf(userId, screen.displayName);
     const now = Date.now();
-    const moved = advance(farm, now);
+    const moved = resetQuota(advance(farm, now), dayIn(now));
     const grazed = graze(farm.ranch ?? newRanch(now), now);
     const working = { ...moved, ranch: grazed, ownerId: userId };
     farms.set(userId, working);
@@ -631,7 +635,12 @@ export async function run(token, { signal, api = API } = {}) {
         if (i !== index) return p;
         if (which === 'water') return { ...p, dry: false };
         if (which === 'weed') {
+          // Nhổ cỏ thì cũng **quên** ai đã gieo nó — cỏ đã đi rồi, và một cuốn sổ nhớ những món
+          // nợ đã trả là một cuốn sổ chỉ để soi lại.
           const sown = { ...p.sownBy };
+          if (sown[userId]) {
+            sown[userId] = { ...sown[userId], weeds: Math.max(0, (sown[userId].weeds ?? 0) - 1) };
+          }
           return { ...p, weeds: p.weeds - 1, sownBy: sown };
         }
         return { ...p, pests: p.pests - 1 };
@@ -915,6 +924,43 @@ export async function run(token, { signal, api = API } = {}) {
       }
     }
 
+    // ---- gieo cỏ, thả sâu ----
+    //
+    // Hai việc gây hại duy nhất của trò chơi này, và cả hai đều **không lấy được gì**: gieo cỏ lên
+    // ruộng người khác không cho mình một đồng nào, nó chỉ làm vụ mùa của người kia bớt đi. Một trò
+    // chơi mà mọi hành vi xấu đều có lãi là một trò chơi dạy người ta làm việc xấu.
+    const sowed = [];
+    if (what === 'sowWeeds' || what === 'sowPests') {
+      const weeds = what === 'sowWeeds';
+      const mine2 = { ...mine, badLeft: (mine.badLeft ?? BAD_PER_DAY) };
+      const allowed = weeds
+        ? sowWeeds(moved.plots[index], userId, mine2.badLeft)
+        : sowPests(moved.plots[index], userId, mine2.badLeft);
+      if (allowed.ok) {
+        moved.plots = moved.plots.map((p, i) => {
+          if (i !== index) return p;
+          const sown = { ...p.sownBy };
+          const had = sown[userId] ?? {};
+          sown[userId] = weeds
+            ? { ...had, weeds: (had.weeds ?? 0) + 1 }
+            : { ...had, pests: (had.pests ?? 0) + 1 };
+          return weeds
+            ? { ...p, weeds: p.weeds + 1, sownBy: sown }
+            : { ...p, pests: p.pests + 1, sownBy: sown };
+        });
+        mine2.badLeft -= 1;
+        sowed.push(weeds ? 'cỏ' : 'sâu');
+        moved.log = note(moved.log,
+          `${mine.name || 'Ai đó'} gieo ${weeds ? 'cỏ' : 'sâu'} lên một thửa.`, now);
+        farms.set(userId, mine2);
+        farms.set(targetId, moved);
+        await pushTo(targetId);
+        save();
+        return `Đã gieo ${weeds ? 'cỏ' : 'sâu'} lên một thửa — còn ${mine2.badLeft} lần hôm nay.`;
+      }
+      return allowed.why;
+    }
+
     // ---- làm hộ ----
     const helped = [];
     if (what === 'helpAll' || what === 'help' || what === 'water' || what === 'weed' || what === 'pest') {
@@ -933,6 +979,11 @@ export async function run(token, { signal, api = API } = {}) {
             return { ...p, pests: p.pests - 1 };
           });
           helped.push({ at, job });
+          // QFarm đếm việc làm hộ vào một hạn mức riêng trong ngày (`zong`, 150 lần) và chỉ trả
+          // kinh nghiệm khi còn hạn mức. Giữ nguyên: không có nó thì một người ghé qua mười tám
+          // thửa của hàng xóm mười tám lần là cách kiếm kinh nghiệm rẻ nhất trò chơi.
+          if ((mine.goodLeft ?? 150) < 1) break;
+          mine.goodLeft = (mine.goodLeft ?? 150) - 1;
           break;         // một việc một thửa một lần ghé
         }
       }

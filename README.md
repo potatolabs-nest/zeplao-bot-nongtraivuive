@@ -296,4 +296,8 @@ Cả ba đều thuộc loại **không báo gì cả**, và cả ba đều cho r
   gì tương đương con chó.
 - **Chưa có nhiệm vụ.** Bản gốc có hai chuỗi nhiệm vụ cho người mới; ở đây bốn thửa đất lúc đầu tự
   làm việc ấy, và chưa có gì thay cho phần còn lại.
+- **Chưa có hoa và quà tặng.** Bản gốc cho tặng hoa cho hàng xóm (`allflower.php`, hai mươi bó hoa
+  ghép từ quả) và nó là cách duy nhất trong trò chơi nói được một điều gì đó với một người cụ thể.
+  Phần xã hội ở đây mới có hái trộm và làm hộ — tức là mới có những việc lấy và cho, chưa có việc
+  **tặng**.
 - **Chưa công khai.** Cùng tình trạng như `@tienlenbot`: chỉ chủ bot mới thêm nó vào phòng được.

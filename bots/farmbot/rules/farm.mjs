@@ -420,6 +420,50 @@ export function pest(plot, byUserId) {
   return yes();
 }
 
+/// Gieo cỏ lên ruộng người khác, và thả sâu lên ruộng người khác.
+///
+/// **Có cái này thì luật chống phá ở trên mới có nghĩa.** QFarm cho hai việc ấy
+/// (`farmlandstatus_scatterseed.php`, `farmlandstatus_pest.php`), và chúng là lý do `weed()` và
+/// `pest()` phải từ chối cỏ do chính mình gieo: nếu không gieo được thì cũng chẳng có gì để mà
+/// chống, và hai dòng ấy chỉ là hai dòng mã không ai chạm tới.
+///
+/// Chúng cũng là thứ duy nhất trong trò chơi này gây hại mà **không lấy được gì** — gieo cỏ lên
+/// ruộng người khác không cho mình một đồng nào, nó chỉ làm vụ mùa của người kia bớt đi một phần
+/// mười. Một trò chơi mà mọi hành vi xấu đều có lãi là một trò chơi dạy người ta làm việc xấu.
+///
+/// Nên hạn mức mỗi ngày là **50 lần**, đúng con số của QFarm (`cron/daily.php` đặt `badnum = 50`).
+/// Và mỗi thửa chỉ đứng được ba thứ: quá ba thì không gieo thêm được nữa.
+export const BAD_PER_DAY = 50;
+export const BAD_MAX_PER_PLOT = 3;
+
+/// Gieo cỏ lên một thửa của người khác.
+export function sowWeeds(plot, byUserId, badLeft) {
+  if (!plot.crop) return no('Thửa này trống.');
+  if (plot.stage === 6) return no('Cây này đã chín, gieo cỏ lên cũng không kịp.');
+  if (plot.weeds >= BAD_MAX_PER_PLOT) return { ok: false, why: 'Thửa này đã đầy cỏ.' };
+  if (badLeft < 1) return { ok: false, why: `Hôm nay bạn đã phá ${BAD_PER_DAY} lần rồi.` };
+  return yes({ weeds: 1 });
+}
+
+/// Thả sâu lên một thửa của người khác.
+export function sowPests(plot, byUserId, badLeft) {
+  if (!plot.crop) return no('Thửa này trống.');
+  if (plot.stage === 6) return no('Cây này đã chín, thả sâu lên cũng không kịp.');
+  if (plot.pests >= BAD_MAX_PER_PLOT) return { ok: false, why: 'Thửa này đã đầy sâu.' };
+  if (badLeft < 1) return { ok: false, why: `Hôm nay bạn đã phá ${BAD_PER_DAY} lần rồi.` };
+  return yes({ pests: 1 });
+}
+
+/// Ngày đã sang thì hạn mức phá và hạn mức làm hộ trở về đầy.
+///
+/// QFarm làm việc này bằng một cronjob (`cron/daily.php`). Ở đây không có cron: con bot chỉ có một
+/// tiến trình và một file, nên hỏi "hôm nay là ngày nào" lúc đọc là cùng một việc, mà không có gì
+/// phải chạy lúc nửa đêm và không có gì để quên chạy.
+export function resetQuota(farm, today, { bad = BAD_PER_DAY, good = 150 } = {}) {
+  if (farm.quotaDay === today) return farm;
+  return { ...farm, quotaDay: today, badLeft: bad, goodLeft: good };
+}
+
 /// Hái. Trả về số quả, và kinh nghiệm.
 export function harvest(plot) {
   if (!plot.crop) return no('Thửa này trống.');

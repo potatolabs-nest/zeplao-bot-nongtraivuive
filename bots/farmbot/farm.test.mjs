@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import {
   SPEED, levelOf, expFor, progressTo, stageOf, marksOf, plotOf, emptyPlot, newFarm,
   advance, grow, harvestOf, sow, water, weed, pest, harvest, pick, clear, steal, openLand,
+  sowWeeds, sowPests, resetQuota, BAD_PER_DAY, BAD_MAX_PER_PLOT,
   upgradeLand, chores, isFarming, ripePlots, regrowthMark, seedsFor,
   PLANT_EXP, HELP_COIN, HELP_EXP, STEAL_MIN_COIN, STEAL_FLOOR, DOG_CHANCE,
   WEED_PENALTY, WEED_PENALTY_CAP, DAILY_COIN, STARTING_COIN, MAX_PLOTS,
@@ -407,6 +408,60 @@ test('chủ ruộng giữ được phần của mình dù bao nhiêu người gh
   }
   assert.ok(taken <= plot.yieldLeft + taken - plot.floor, 'không lấy quá phần trên sàn');
   assert.ok(plot.yieldLeft >= plot.floor, 'sàn phải còn nguyên');
+});
+
+test('gieo cỏ và thả sâu: được, nhưng không lấy được gì', () => {
+  // Đây là hai việc gây hại duy nhất của trò chơi, và cả hai đều **không có lãi**. Nếu chúng có
+  // lãi thì trò chơi đang dạy người ta làm việc xấu.
+  const fresh = plotOf(2, { grown: 1000 });
+  const one = sowWeeds(fresh, 'me', BAD_PER_DAY);
+  assert.equal(one.ok, true);
+  assert.equal(one.weeds, 1);
+
+  const bug = sowPests(fresh, 'me', BAD_PER_DAY);
+  assert.equal(bug.ok, true);
+  assert.equal(bug.pests, 1);
+
+  // Đầy ba thứ thì thôi.
+  const weedy = plotOf(2, { grown: 1000, weeds: BAD_MAX_PER_PLOT });
+  assert.equal(sowWeeds(weedy, 'me', BAD_PER_DAY).ok, false);
+  // Cây đã chín thì gieo cỏ lên cũng không kịp, nên không cho.
+  assert.equal(sowWeeds(plotOf(2, { grown: 36000 }), 'me', BAD_PER_DAY).ok, false);
+  // Thửa trống thì không có gì để phá.
+  assert.equal(sowPests(emptyPlot(), 'me', BAD_PER_DAY).ok, false);
+});
+
+test('hạn mức phá trong ngày, và nó trở về đầy khi sang ngày', () => {
+  const plot = plotOf(2, { grown: 1000 });
+  assert.equal(sowWeeds(plot, 'me', 0).ok, false, 'hết hạn mức thì thôi');
+  assert.match(sowWeeds(plot, 'me', 0).why, /50/);
+
+  // Sang ngày thì đầy lại. Không có cron: con bot hỏi "hôm nay là ngày nào" lúc đọc.
+  const farm = { ...newFarm(0), quotaDay: '2026-01-01', badLeft: 0, goodLeft: 3 };
+  const same = resetQuota(farm, '2026-01-01');
+  assert.equal(same.badLeft, 0, 'cùng ngày thì không đầy lại');
+  const tomorrow = resetQuota(farm, '2026-01-02');
+  assert.equal(tomorrow.badLeft, BAD_PER_DAY);
+  assert.equal(tomorrow.goodLeft, 150);
+  assert.equal(tomorrow.quotaDay, '2026-01-02');
+});
+
+test('cỏ do chính mình gieo thì không nhổ được, nhưng chủ ruộng nhổ được', () => {
+  // Luật chống phá chỉ có nghĩa khi gieo cỏ là một việc làm được. Đây là phép kiểm nối hai nửa
+  // ấy lại: gieo, rồi thử nhổ.
+  const plot = plotOf(2, { grown: 1000 });
+  const sowed = sowWeeds(plot, 'me', BAD_PER_DAY);
+  assert.equal(sowed.ok, true);
+
+  const withWeeds = { ...plot, weeds: 1, sownBy: { me: { weeds: 1 } } };
+  assert.equal(weed(withWeeds, 'me').ok, false, 'tự gieo rồi tự nhổ để lấy kinh nghiệm');
+
+  // Nhưng chủ ruộng — người không gieo — thì nhổ được, và nhổ xong thửa đất sạch.
+  assert.equal(weed(withWeeds, 'owner').ok, true);
+
+  // Và nếu hai người cùng gieo thì người thứ hai nhổ được một cái.
+  const both = { ...plot, weeds: 2, sownBy: { me: { weeds: 1 } } };
+  assert.equal(weed(both, 'me').ok, true, 'còn một cái không phải của mình');
 });
 
 // ---- đất ---------------------------------------------------------------------------------------

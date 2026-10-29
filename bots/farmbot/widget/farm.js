@@ -444,6 +444,17 @@ function drawVisit() {
         onPress: () => send({ visit: { who: one.id, what: 'helpAll' } }),
       }));
     }
+    // Gieo cỏ và thả sâu. Nút này **không** giấu đi, và nó cũng không được tô sáng: nó là một việc
+    // gây hại không lấy được gì, và một trò chơi giấu nó đi là một trò chơi nói dối về việc người
+    // chơi làm được những gì.
+    const bad = state.badLeft ?? 0;
+    card.appendChild(button('Gieo cỏ', {
+      kind: 'small quiet',
+      verdict: bad > 0 && one.help.weeds < 3
+        ? { ok: true }
+        : { ok: false, why: bad > 0 ? 'Thửa này đầy cỏ rồi.' : 'Hôm nay bạn đã phá đủ 50 lần.' },
+      onPress: () => send({ visit: { who: one.id, what: 'sowWeeds', plot: 0 } }),
+    }));
     body.appendChild(card);
   }
 }
