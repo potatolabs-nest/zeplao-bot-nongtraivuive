@@ -1,6 +1,12 @@
 // Khung widget **chạy thật trong một trình duyệt thật**, cho tới khi nó vẽ ra chữ.
 //
-//   node tools/widget-selftest.mjs
+//   node tools/widget-selftest.mjs                       # gói trên máy này
+//   node tools/widget-selftest.mjs --live <botId> <ver>  # bản **đã upload**, đọc từ web công khai
+//
+// Hai chế độ, và chế độ thứ hai là chế độ đáng giá: gói trên máy này đã chạy được rồi mới tới lúc
+// upload, còn cái cần kiểm là **cái mà người chơi thật sự tải về** — qua CDN, qua ba cái máy chủ,
+// và sau khi nền tảng ghi đè `zeplao.js` bằng bản của nó. Một file 404 kèm `immutable` một năm, một
+// gói giải nén lên nhầm máy: cả hai đều cho ra một cái khung trắng mà gói trên đĩa không hề có.
 //
 // Công cụ này tồn tại vì mọi lần upload widget đều là một dịp để trao cho người chơi một màn hình
 // trắng, và một màn hình trắng không nói gì cả: không log, không lỗi, không một dòng ở đâu. Cách
@@ -15,8 +21,10 @@
 // Nên phép kiểm này mở đúng bộ file ấy trong Chrome, đóng vai máy chủ, đẩy vào một trạng thái như
 // thật, và chỉ chịu đi tiếp khi trang **vẽ ra được khu vườn**.
 //
-// Nó chạy trên ba file của gói, không cần token và không cần mạng. `zeplao.js` được lấy từ đĩa nếu
-// có (bản của lần upload trước), không thì lấy từ bản công khai mà bất kỳ ai cũng tải được.
+// Ở chế độ thường nó chạy trên ba file của gói, không cần token và không cần mạng; `zeplao.js` được
+// lấy từ đĩa nếu có, không thì lấy từ bản công khai mà bất kỳ ai cũng tải được. Ở chế độ `--live`
+// nó tải cả gói từ web công khai trước, và phần còn lại giống hệt — cùng một trang, cùng một phép
+// kiểm.
 import { readFileSync, existsSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -241,9 +249,53 @@ if (!existsSync(CHROME)) {
   process.exit(2);
 }
 
+/// Chế độ `--live`: tải đúng những file mà trình duyệt của người chơi sẽ tải.
+///
+/// Từ **web công khai**, không phải từ API: một lần deploy đã từng upload thành công, API báo
+/// version mới, và các edge thì chưa có file — nên bản đã công bố trả 404 ở đúng những host mà
+/// người chơi đi qua. Kiểm bằng `getWidget` là kiểm cái API biết; kiểm bằng cách này là kiểm cái
+/// người chơi nhận.
+async function fetchLive(botId, version) {
+  const dir = mkdtempSync(join(tmpdir(), 'farm-live-'));
+  const hosts = ['https://kuku.vn', 'https://api-bot.kuku.vn'];
+  const names = ['index.html', 'style.css', 'zeplao.js', 'draw.js', 'farm.js'];
+  const missing = [];
+
+  for (const name of names) {
+    let saved = false;
+    for (const host of hosts) {
+      const answer = await fetch(`${host}/api/widgets/${botId}/${version}/${name}`,
+        { headers: { 'Cache-Control': 'no-cache' } }).catch(() => null);
+      if (!answer?.ok) continue;
+      const bytes = Buffer.from(await answer.arrayBuffer());
+      // Một file trả về `200` mà rỗng là đúng cái bệnh `onerror` không báo — nên nó bị coi như
+      // thiếu, ngay ở đây, trước khi trình duyệt có cơ hội im lặng về nó.
+      if (bytes.length === 0) { missing.push(`${name} (rỗng, từ ${host})`); continue; }
+      writeFileSync(join(dir, name), bytes);
+      saved = true;
+      break;
+    }
+    if (!saved && !missing.some((one) => one.startsWith(name))) missing.push(`${name} (404 ở mọi host)`);
+  }
+
+  if (missing.length) {
+    console.error(`bản v${version} trả về thiếu file — đây là khung trắng:`);
+    for (const one of missing) console.error(`  · ${one}`);
+    process.exit(1);
+  }
+  console.log(`bản v${version}: tải được cả ${names.length} file từ web công khai`);
+  return dir;
+}
+
+const live = process.argv[2] === '--live'
+  ? await fetchLive(process.argv[3], process.argv[4])
+  : null;
+/// Thư mục phục vụ: gói đã tải nếu đang ở chế độ `--live`, không thì gói trên máy này.
+const SERVE = live ?? WIDGET;
+
 // Cầu nối: bản trên đĩa nếu có, không thì bản công khai mà mọi tác giả đều dùng.
 const bridgePath = join(WIDGET, 'zeplao.js');
-if (!existsSync(bridgePath)) {
+if (!live && !existsSync(bridgePath)) {
   const answer = await fetch(BRIDGE_URL).catch(() => null);
   if (!answer?.ok) {
     console.error(`không tải được ${BRIDGE_URL} và cũng không có bản nào trên đĩa`);
@@ -262,7 +314,7 @@ const files = ['index.html', 'style.css', 'draw.js', 'farm.js', 'zeplao.js'];
 /// trước khi bất cứ thứ gì trong file ấy chạy, nên một người nghe đặt sau nó không bao giờ nghe
 /// được gì.
 const page = (() => {
-  const html = readFileSync(join(WIDGET, 'index.html'), 'utf8');
+  const html = readFileSync(join(SERVE, 'index.html'), 'utf8');
   // Cái lưới bắt lỗi phải được đăng ký trước khi `draw.js` hay `farm.js` chạy, vì một `SyntaxError`
   // lúc phân tích xảy ra trước khi bất cứ dòng nào trong file ấy chạy. Nhưng nó phải nằm **sau
   // doctype**: một thẻ `<script>` đặt trước `<!doctype html>` đẩy cả trang vào **quirks mode**, và
@@ -301,7 +353,7 @@ const server = createServer((request, response) => {
   const type = name.endsWith('.css') ? 'text/css'
     : name.endsWith('.js') ? 'text/javascript' : 'text/html';
   response.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` });
-  response.end(readFileSync(join(WIDGET, name)));
+  response.end(readFileSync(join(SERVE, name)));
 });
 
 server.listen(0, '127.0.0.1');

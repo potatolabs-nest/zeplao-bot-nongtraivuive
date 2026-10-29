@@ -1,0 +1,58 @@
+# Bot nông trại, chạy như một service của riêng nó.
+#
+# Đây là lý do nó được deploy chứ không chỉ được viết ra: một bot là **client của API công khai**,
+# không phải một phần của API, và nó không được phép kéo API xuống theo. Container riêng, vòng
+# restart riêng, không chia phần nào của lần chuyển giao blue-green. Một lần deploy API không khởi
+# động lại cái này và cũng không đợi nó — và nếu cái này crash liên tục thì thứ chết là nó.
+#
+# Trong container vì máy chủ không có Node và không nên mọc thêm Node cho một con bot. Nó gọi API
+# qua đúng cái hostname công khai mà một con bot trên laptop ai đó gọi — không có đường đi tắt bên
+# trong.
+#
+# Trên máy chủ ở /etc/systemd/system/zeplao-farmbot.service.
+#
+# Token **không** nằm trong file này và không nằm trong git. Nó ở /opt/zeplao/farmbot/.env, chỉ root
+# đọc được, vì token của một con bot là toàn bộ con bot ấy.
+#
+# /opt/zeplao/farmbot/data là chỗ duy nhất nó được ghi. Nông trại của mọi người nằm trong đó — cây
+# đã trồng, vật đã nuôi, tiền đã kiếm — và không có cách nào dựng lại từ mã nguồn.
+
+[Unit]
+Description=Zeplao farm bot
+After=network-online.target docker.service
+Requires=docker.service
+# Ở [Unit], không phải [Service]. systemd trên máy này không biết khoá ấy ở [Service] và nói ra
+# điều đó ở **mỗi** lần daemon-reload — một cảnh báo in ra ở mọi lần deploy là một cảnh báo không
+# ai đọc.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# --rm để một lần restart không phải một đống container chết; --network host thì cố ý **không**
+# dùng, vì cái này không có việc gì trên network stack của máy chủ.
+ExecStartPre=-/usr/bin/docker rm -f zeplao-farmbot
+# Cả thư mục của bot, chỉ-đọc, và `data/` ghi được chồng lên trên.
+#
+# Thứ tự hai cái mount này quan trọng, và nó đã từng sai: chồng ngược chiều thì được một con bot
+# chạy ngon, chia bài, trả tiền — và **mất sạch nông trại của mọi người ngay khi restart**. Không
+# có dòng log nào báo chuyện đó cho tới lúc có người thấy cây mình trồng hôm qua không còn nữa.
+# Nên nó được kiểm bằng một dòng, sau mỗi lần khởi động — xem `deploy-bot.sh`.
+#
+# Chỉ-đọc ở phần mã để mã không sửa được từ bên trong; `data/` mount sau, ghi được, vì nông trại là
+# thứ duy nhất con bot viết.
+ExecStart=/usr/bin/docker run --rm --name zeplao-farmbot \
+  --env-file /opt/zeplao/farmbot/.env \
+  -v /opt/zeplao/farmbot:/app:ro \
+  -v /opt/zeplao/farmbot/data:/app/data \
+  -w /app \
+  --memory 192m --cpus 0.25 \
+  node:22-alpine node /app/farmbot.mjs
+# Dừng chứ không giết. Con bot có chỗ cho SIGTERM đáp xuống và ghi nốt nông trại đang dở; không có
+# cái chờ ấy thì một lần deploy rơi đúng vào giữa một lần ghi.
+ExecStop=/usr/bin/docker stop -t 10 zeplao-farmbot
+Restart=always
+RestartSec=5
+SyslogIdentifier=zeplao-farmbot
+
+[Install]
+WantedBy=multi-user.target

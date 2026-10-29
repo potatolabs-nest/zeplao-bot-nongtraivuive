@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A Cúc Cu bot that runs a nông trại: plant, water, harvest, and steal from the neighbours",
+  "description": "Bot nông trại cho Cúc Cu — bản port của QFarm",
+  "scripts": {
+    "test": "npm test --prefix bots/farmbot",
+    "css": "node tools/css-check.mjs",
+    "widget": "node tools/widget-selftest.mjs"
+  },
   "engines": { "node": ">=18" }
 }
