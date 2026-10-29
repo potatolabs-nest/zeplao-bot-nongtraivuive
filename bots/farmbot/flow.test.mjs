@@ -28,6 +28,7 @@ process.env.FARM_SPEED = '100000';
 
 const { run, dayIn, API } = await import('./farmbot.mjs');
 const { newFarm, advance, plotOf, cropById, levelOf, expFor, chores } = await import('./rules/farm.mjs');
+const { animalById } = await import('./rules/animals.mjs');
 
 const nap = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -489,15 +490,54 @@ test('hai người ở hai nhóm khác nhau vẫn ghé được vườn nhau', a
     const ripe = anState.plots.filter((plot) => plot.ripe && plot.yieldLeft > plot.floor);
     assert.ok(ripe.length > 0, 'An phải có gì đó để mất');
 
-    // Bình hái trộm thửa ấy.
-    const byBinh = await act(binhId, 'room-binh', 'user-binh', { visit: { who: FARMER.userId, what: 'steal', plot: ripe[0].index } });
-    // Hành động ấy chưa được cài — xem phép kiểm dưới, phần này chỉ xác nhận hai phiên sống độc lập.
-    assert.ok(byBinh, 'Bình vẫn có khung của mình');
+    // Bình ghé hái trộm. Đây là phép kiểm thật của cả phép thử này: một phiên không đi xuyên phòng
+    // được, nên nếu khu vườn thuộc về một cái **phòng** thì câu lệnh dưới đây không thể chạy.
+    const before = ripe[0].yieldLeft;
+    await act(binhId, 'room-binh', 'user-binh',
+      { visit: { who: FARMER.userId, what: 'stealAll' } });
+
+    // An mở lại khung mình và thấy vườn đã bị vét một ít — và hàng xóm là Bình.
+    const after = await act(anId, 'room-an', FARMER.userId, { water: 4 });
+    const same = after.plots[ripe[0].index];
+    assert.ok(same.yieldLeft < before, 'Bình phải lấy được gì đó từ vườn của An');
+    assert.ok(after.neighbours.some((one) => one.id === 'user-binh'), 'và An phải thấy Bình là hàng xóm');
+    assert.ok(after.log.some((line) => /hái trộm/i.test(line.text)), 'sổ của An phải ghi lại');
+
+    // Cuốn sổ ấy chỉ có **một** dòng cho một lần ghé, dù lần ấy vét mấy thửa: một cuộc trò chuyện
+    // bị chiếm bởi ba tin nhắn cho ba thửa là một cuộc trò chuyện không ai đọc tin nhắn nữa.
+    assert.equal(after.log.filter((line) => /hái trộm/i.test(line.text)).length, 1);
 
     // Và điều quan trọng nhất: **không lần đẩy nào của người này mang nông trại của người kia**.
     for (const push of app.pushes) {
       if (!push.to) continue;
       assert.equal(push.state.me.id, push.to);
+    }
+  });
+});
+
+test('nông trại của người khác không nằm trong ảnh chụp gửi cho mình', async () => {
+  // Một khu vườn là của một người, nên danh sách hàng xóm phải là **mô tả**, không phải dữ liệu:
+  // đủ để biết ai đang có gì, không đủ để biết họ trồng cây gì ở thửa nào.
+  await withBot(`${STORE}.peek`, async ({ app }) => {
+    app.join('room-an', FARMER.userId);
+    app.join('room-binh', 'user-binh');
+    app.said('room-an', FARMER.userId);
+    app.said('room-binh', 'user-binh');
+    await app.until(() => app.sessions.size >= 2);
+    await nap(150);
+
+    const mine = app.pushes.filter((push) => push.to === 'user-binh');
+    assert.ok(mine.length > 0);
+    const state = mine.at(-1).state;
+    const one = state.neighbours.find((it) => it.id === FARMER.userId);
+    assert.ok(one, 'phải thấy An là hàng xóm');
+    assert.equal(one.plots, undefined, 'không mang theo thửa đất của người khác');
+    assert.equal(one.seeds, undefined, 'không mang theo túi hạt của người khác');
+    assert.equal(one.coin, undefined, 'và không mang theo ví của người khác');
+    assert.equal(typeof one.pens, 'number', 'chỉ đếm được bao nhiêu con đang có sản phẩm');
+    for (const key of Object.keys(one)) {
+      assert.ok(['id', 'name', 'ripe', 'pens', 'help', 'animals', 'last'].includes(key),
+        `trường lạ trong mô tả hàng xóm: ${key}`);
     }
   });
 });
@@ -539,6 +579,94 @@ test('một người gõ lệnh ở nhóm thứ hai thì khu vườn đi theo, k
     const live = [...app.sessions.values()].filter((one) => one.userIds[0] === FARMER.userId);
     assert.equal(live.length, 1, 'chỉ còn một phiên cho người này');
     assert.equal(live[0].conversationId, 'room-2');
+  });
+});
+
+// ---- bãi chăn của hàng xóm ----------------------------------------------------------------------
+
+test('lấy trộm sản phẩm trong bãi chăn của hàng xóm', async () => {
+  // Nửa còn lại của phần xã hội: hái trộm là lấy **quả** trên đất, còn cái này là lấy **sản phẩm**
+  // trong chuồng. Hai ngưỡng khác nhau, và ngưỡng ở đây — hơn một nửa sản lượng — là thứ buộc
+  // người lấy trộm phải để yên cho con vật làm việc.
+  await withBot(`${STORE}.raid`, async ({ app }) => {
+    app.join('room-an', FARMER.userId);
+    app.join('room-binh', 'user-binh');
+    app.said('room-an', FARMER.userId);
+    app.said('room-binh', 'user-binh');
+    await app.until(() => app.sessions.size >= 2);
+
+    const byUser = new Map();
+    for (const [id, session] of app.sessions) byUser.set(session.userIds[0], id);
+    const anId = byUser.get(FARMER.userId);
+    const binhId = byUser.get('user-binh');
+    const act = async (sessionId, conversationId, userId, action) => {
+      const before = app.pushes.length;
+      app.push({
+        kind: 'widget_action',
+        widgetAction: {
+          sessionId, conversationId,
+          from: { userId, displayName: userId }, role: 'player', action,
+        },
+      });
+      return app.until(() => (app.pushes.length > before ? app.pushes.at(-1).state : null), { ms: 1500 });
+    };
+
+    // Con gà của An cần lớn xong rồi cho ra **hơn một nửa sức chứa của nó** — và sức chứa ấy là
+    // tám phần, không phải hai mươi. Nên phải chờ đủ tám nhịp đẻ, tính từ chính các con số của
+    // luật chứ không phải một con số đoán ra: bộ thử chạy nhanh gấp một trăm nghìn lần, nên một
+    // nhịp đẻ là `produce / 100000` giây thật.
+    const chicken = animalById(1001);
+    const speed = 100000;
+    await act(anId, 'room-an', FARMER.userId, { feed: 100 });
+    await nap(((chicken.grow + chicken.produce * 8) / speed) * 1000 + 600);
+    // Cho ăn lại ở giữa: máng vơi dần trong lúc chờ, và một cái máng cạn thì con vật đứng im —
+    // tức là phép kiểm này sẽ đỏ vì một lý do hoàn toàn khác với cái nó định kiểm.
+    await act(anId, 'room-an', FARMER.userId, { feed: 100 });
+    await nap(100);
+
+    // Cho ăn lại — máng đã vơi trong lúc chờ — rồi đọc trạng thái.
+    const anState = await act(anId, 'room-an', FARMER.userId, { feed: 100 });
+    const fat = anState.ranch.pens.filter((pen) => pen.ready > pen.max * 0.5);
+    assert.ok(fat.length > 0, 'con gà của An phải cho ra hơn một nửa sản lượng — '
+      + JSON.stringify(anState.ranch.pens.map((pen) => ({ ready: pen.ready, max: pen.max }))));
+
+    // Bình thấy nó trong danh sách hàng xóm. Một hành động **không mất tiền** để có ảnh chụp mới:
+    // đi lấy trộm phải có ít nhất 500 đồng trong túi (luật của QFarm, "做小偷也要成本的" — làm
+    // trộm cũng phải có vốn), và một phép kiểm vô tình tiêu hết tiền của kẻ trộm trước khi hắn đi
+    // là một phép kiểm đỏ vì lý do khác hẳn cái nó định kiểm.
+    const seen = await act(binhId, 'room-binh', 'user-binh', { mouse: true });
+    const an = seen.neighbours.find((one) => one.id === FARMER.userId);
+    assert.ok(an, 'Bình phải thấy An là hàng xóm');
+    assert.ok(an.pens > 0, 'và phải thấy bãi chăn của An có gì để lấy');
+
+    const robbed = await act(binhId, 'room-binh', 'user-binh',
+      { visit: { who: FARMER.userId, what: 'raidAll' } });
+    assert.ok(robbed.goods.some((one) => one.id === 1001 && one.count > 0),
+      'trứng phải vào túi của Bình');
+
+    // Và An thấy bãi chăn mình vơi đi, cùng một dòng trong sổ.
+    const back = await act(anId, 'room-an', FARMER.userId, { feed: 100 });
+    const left = back.ranch.pens.find((pen) => pen.animal)?.ready ?? 0;
+    assert.ok(left < fat[0].ready, `sản phẩm của An phải vơi đi, còn ${left} trước đó ${fat[0].ready}`);
+    assert.ok(back.log.some((line) => /lấy trộm/i.test(line.text)), 'sổ của An phải ghi lại');
+
+    // Và bán được. Một món vào túi mà không bán được là một món chỉ để nhìn.
+    const sold = await act(binhId, 'room-binh', 'user-binh', { sell: { goods: 1001 } });
+    assert.ok(sold.coin > robbed.coin, 'bán trứng phải ra tiền');
+    assert.equal(sold.goods.find((one) => one.id === 1001)?.count ?? 0, 0, 'và túi phải sạch');
+
+    // Một lần mỗi con mỗi người.
+    //
+    // Phép kiểm là **lần thứ hai không lấy được gì**, không phải "số quả không đổi": con gà cho ra
+    // liên tục, nên giữa hai lần đọc nó lại đẻ thêm, và một phép so hai lần đọc là một phép kiểm
+    // đỏ hay xanh tuỳ vào việc con gà có kịp đẻ hay không. `>=` thì bền: cho ra chỉ làm con số ấy
+    // tăng, còn một lần lấy trộm thứ hai sẽ làm nó giảm.
+    const twice = await act(binhId, 'room-binh', 'user-binh',
+      { visit: { who: FARMER.userId, what: 'raidAll' } });
+    const leftTwice = (await act(anId, 'room-an', FARMER.userId, { feed: 100 }))
+      .ranch.pens.find((pen) => pen.animal)?.ready ?? 0;
+    assert.equal(twice.goods.length, 0, 'lần thứ hai không lấy được gì');
+    assert.ok(leftTwice >= left, `và con ấy không bị lấy hai lần (${leftTwice} < ${left})`);
   });
 });
 

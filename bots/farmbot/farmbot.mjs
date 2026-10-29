@@ -72,7 +72,7 @@ import {
 } from './rules/farm.mjs';
 import {
   newRanch, graze, feed, buy, collect, butcher, raid, catchMouse, openHouse, emptyPen,
-  chores as ranchChores, hungry, hopperLasts, roomFor, penFor, houseAt, penCount,
+  chores as ranchChores, hungry, hopperLasts, roomFor, penFor, houseAt, penCount, capacityOf,
   animalById, ANIMALS, HOUSES, GRASS, MAX_FEED, HELP_EXP_PER_TEN,
 } from './rules/ranch.mjs';
 
@@ -390,6 +390,18 @@ export async function run(token, { signal, api = API } = {}) {
           return crop ? { id: Number(id), name: crop.name, count, worth: sellPriceOf(crop) } : null;
         })
         .filter(Boolean),
+      // Sản phẩm của vật nuôi: trứng, sữa, lông. Một túi riêng, vì một quả trứng không phải một
+      // loại rau — và vì giá của nó là giá của con vật đã cho ra nó, không phải giá bán của một
+      // cây trồng nào.
+      goods: Object.entries(farm.goods ?? {})
+        .filter(([, count]) => count > 0)
+        .map(([id, count]) => {
+          const animal = animalById(Number(id));
+          return animal
+            ? { id: Number(id), name: animal.product, count, worth: animal.productPrice }
+            : null;
+        })
+        .filter(Boolean),
       store: seedsFor(farm.exp).map((crop) => ({
         id: crop.id,
         name: crop.name,
@@ -508,7 +520,9 @@ export async function run(token, { signal, api = API } = {}) {
             }
             : null,
           ready: pen.ready,
-          max: animal ? animal.yield : 0,
+          // Sức chứa thật của một con: xem `capacityOf`. Dùng `yield` ở đây thì cái thanh trong
+          // khung không bao giờ đầy, và người chơi chờ một cái chuồng không bao giờ đầy.
+          max: animal ? capacityOf(animal) : 0,
           collect: animal && pen.ready > 0
             ? { ok: true, amount: pen.ready }
             : { ok: false, why: animal ? 'Chưa có gì để bắt.' : 'Chuồng trống.' },
@@ -663,11 +677,28 @@ export async function run(token, { signal, api = API } = {}) {
     }
 
     if (action.sell !== undefined) {
-      const { crop, count } = action.sell ?? {};
+      const { crop, goods, count } = action.sell ?? {};
+
+      // Sản phẩm của vật nuôi. Cùng một nút, hai túi — người chơi không cần biết quả và trứng nằm
+      // ở hai chỗ khác nhau trong bộ nhớ của con bot.
+      if (goods !== undefined) {
+        const have = next.goods?.[String(goods)] ?? 0;
+        if (have < 1) return 'Không có gì để bán.';
+        const animal = animalById(Number(goods));
+        if (!animal) return null;
+        const want = Math.max(1, Math.min(have, Math.floor(Number(count) || have)));
+        next.goods = { ...next.goods, [String(goods)]: have - want };
+        next.coin += animal.productPrice * want;
+        farms.set(userId, next);
+        return `Bán ${want} ${animal.product} được `
+          + `${(animal.productPrice * want).toLocaleString('vi-VN')} đồng.`;
+      }
+
       const have = next.fruit[crop] ?? 0;
       const want = Math.max(1, Math.min(have, Math.floor(Number(count) || have)));
       if (have < 1) return 'Không có gì để bán.';
       const one = cropById(crop);
+      if (!one) return null;
       next.fruit = { ...next.fruit, [crop]: have - want };
       next.coin += sellPriceOf(one) * want;
       farms.set(userId, next);
@@ -763,10 +794,13 @@ export async function run(token, { signal, api = API } = {}) {
       // Sản phẩm vào túi theo id của cây tương ứng: `farm.fruit` chứa cả quả và cỏ, nên sản phẩm
       // của vật nuôi đi vào một túi riêng, kẻo trứng gà thành ra một loại rau.
       next.ranch = { ...next.ranch, pens };
-      next.goods = { ...(next.goods ?? {}), [animal.id]: ((next.goods ?? {})[animal.id] ?? 0) + got.amount };
+      next.goods = {
+        ...(next.goods ?? {}),
+        [String(animal.id)]: ((next.goods ?? {})[String(animal.id)] ?? 0) + got.amount,
+      };
       next.ranch = { ...next.ranch, exp: (next.ranch.exp ?? 0) + got.exp };
       farms.set(userId, next);
-      return `Bắt được ${got.amount} ${got.product}.`;
+      return `Bắt được ${got.amount} ${got.product} (${animal.productPrice.toLocaleString('vi-VN')} đồng một cái).`;
     }
 
     if (action.butcher !== undefined) {
@@ -839,10 +873,19 @@ export async function run(token, { signal, api = API } = {}) {
       const ripe = ripePlots(farm).filter(({ plot }) =>
         plot.yieldLeft > plot.floor && !plot.thieves?.[userId]);
       const rt = farm.ranch ? ranchChores(farm.ranch) : { collected: 0 };
+      // Bãi chăn: những chuồng đã cho ra đủ để lấy. Ngưỡng là *hơn một nửa* sản lượng, và nó là
+      // ngưỡng của QFarm — nó buộc người lấy trộm phải để yên cho con vật làm việc, tức là người
+      // chăm chỉ không bao giờ mất sạch.
+      const pens = (farm.ranch?.pens ?? [])
+        .map((pen, at) => ({ pen, at }))
+        .filter(({ pen }) => pen.animal
+          && pen.ready > capacityOf(animalById(pen.animal)) * 0.5
+          && !pen.raided?.[userId]);
       out.push({
         id,
         name: farm.name || 'Một nông dân',
         ripe: ripe.length,
+        pens: pens.length,
         // Còn việc gì làm hộ không — nhổ cỏ, bắt sâu, tưới. Đây là lý do để ghé qua **kể cả khi
         // không có gì để hái**, và là thứ làm cho việc đi thăm không chỉ là đi lấy.
         help: chores(farm),
@@ -922,6 +965,55 @@ export async function run(token, { signal, api = API } = {}) {
         if (got.caught) { bitten = got.fine; break; }
         stolen.push(got);
       }
+    }
+
+    // ---- lấy trộm sản phẩm trong bãi chăn ----
+    if (what === 'raidAll') {
+      const ranges = moved.ranch?.pens
+        .map((pen, at) => ({ pen, at }))
+        .filter(({ pen }) => pen.animal && !pen.raided?.[userId]) ?? [];
+      const got = [];
+      const bag = { ...(mine.goods ?? {}) };
+      for (const { at } of ranges) {
+        // Đọc con vật từ `moved`, **sau** mỗi lần sửa — không phải từ danh sách dựng trước vòng
+        // lặp. Một lần lấy trộm đổi `ready` của chuồng, và giữ lại con số cũ thì lần sau trong
+        // cùng một lượt ghé vẫn thấy nó đầy.
+        const pen = moved.ranch.pens[at];
+        const allowed = raid(pen, userId, targetId, { coin: mine.coin });
+        if (!allowed.ok) continue;
+        got.push({ ...allowed, at });
+        moved.ranch = {
+          ...moved.ranch,
+          pens: moved.ranch.pens.map((one, i) => (i === at
+            ? {
+              ...one,
+              ready: one.ready - allowed.amount,
+              raided: { ...one.raided, [userId]: allowed.amount },
+            }
+            : one)),
+        };
+      }
+      if (got.length) {
+        // Sản phẩm vào túi theo **id con vật**. `animal.id` là một con số, và một khoá số trong
+        // một đối tượng JavaScript là một chuỗi — nên chỗ bắt sản phẩm lúc nãy ghi vào khoá
+        // `1001` còn chỗ này đọc ra `10001`, và hai chỗ ấy lặng lẽ không gặp nhau. Cùng một con
+        // vật, một khoá, ở cả hai đường.
+        for (const one of got) {
+          const animal = ANIMALS.find((it) => it.product === one.product);
+          if (!animal) continue;
+          bag[String(animal.id)] = (bag[String(animal.id)] ?? 0) + one.amount;
+        }
+        mine.goods = bag;
+        const words = got.map((one) => `${one.amount} ${one.product}`);
+        moved.log = note(moved.log, `${mine.name || 'Ai đó'} lấy trộm ${words.join(', ')}.`, now);
+        farms.set(userId, mine);
+        farms.set(targetId, moved);
+        await pushTo(targetId);
+        save();
+        return `Lấy trộm được ${words.join(', ')}.`;
+      }
+      if (mine.coin < STEAL_MIN_COIN) return `Phải có ít nhất ${STEAL_MIN_COIN} đồng trong túi.`;
+      return 'Bãi chăn nhà đó chưa có gì để lấy.';
     }
 
     // ---- gieo cỏ, thả sâu ----

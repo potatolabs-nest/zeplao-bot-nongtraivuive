@@ -365,6 +365,34 @@ function drawShop() {
   const body = $('shop-body');
   body.innerHTML = '';
 
+  // Túi: quả đã hái và sản phẩm vật nuôi đã bắt, mỗi thứ một nút bán. Nằm ở tab Chợ vì bán là một
+  // việc ở chợ, và vì một túi không có nút bán là một túi chỉ để nhìn.
+  const bag = [...(state.fruit ?? []).map((one) => ({ ...one, kind: 'crop' })),
+    ...(state.goods ?? []).map((one) => ({ ...one, kind: 'goods' }))]
+    .filter((one) => one.count > 0);
+  if (bag.length) {
+    const title = document.createElement('h4');
+    title.className = 'bag-title';
+    title.textContent = 'Trong túi';
+    body.appendChild(title);
+    for (const one of bag) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<b>${draw.escape(one.name)} ×${one.count}</b>
+        <span class="sub">${one.worth.toLocaleString('vi-VN')} đồng một cái</span>`;
+      card.appendChild(button(`Bán hết (${(one.worth * one.count).toLocaleString('vi-VN')})`, {
+        kind: 'small',
+        onPress: () => send(one.kind === 'goods'
+          ? { sell: { goods: one.id } }
+          : { sell: { crop: one.id } }),
+      }));
+      body.appendChild(card);
+    }
+    const rule = document.createElement('hr');
+    rule.className = 'bag-rule';
+    body.appendChild(rule);
+  }
+
   if (shopTab === 'seed') {
     for (const seed of state.store) {
       const card = document.createElement('div');
@@ -423,6 +451,7 @@ function drawVisit() {
     card.className = 'card';
     const jobs = [];
     if (one.ripe > 0) jobs.push(`hái trộm ${one.ripe} thửa`);
+    if (one.pens > 0) jobs.push(`${one.pens} con có sản phẩm`);
     if (one.help.weeds > 0) jobs.push(`${one.help.weeds} cỏ`);
     if (one.help.pests > 0) jobs.push(`${one.help.pests} sâu`);
     if (one.help.water > 0) jobs.push(`${one.help.water} khô`);
@@ -436,6 +465,12 @@ function drawVisit() {
       card.appendChild(button('Hái trộm', {
         kind: 'small primary',
         onPress: () => send({ visit: { who: one.id, what: 'stealAll' } }),
+      }));
+    }
+    if (one.pens > 0) {
+      card.appendChild(button('Lấy trộm bãi', {
+        kind: 'small primary',
+        onPress: () => send({ visit: { who: one.id, what: 'raidAll' } }),
       }));
     }
     if (one.help.total > 0) {

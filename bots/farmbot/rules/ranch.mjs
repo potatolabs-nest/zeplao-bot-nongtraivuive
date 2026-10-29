@@ -43,13 +43,27 @@ export const MAX_FEED = 100;
 export const HELP_EXP_PER_TEN = 1;
 
 /// Bắt sản phẩm trên bãi chăn của người khác — chỉ được lấy khi con vật đã cho ra **hơn một nửa**
-/// sản lượng của nó.
+/// những gì nó có thể cho.
 ///
-/// Ngưỡng ấy là của QFarm (`cgi_steal_product.php`: `output/2 < totalCome`), và nó là một ngưỡng
-/// hay: nó buộc người lấy trộm phải để yên cho con vật làm việc, tức là người chăm chỉ không bao
-/// giờ mất sạch. Và mỗi con chỉ bị lấy **một đơn vị một lần**, người lấy được ghi vào con vật ấy —
-/// nên mười người ghé qua không vét được một con bò.
+/// Ngưỡng là của QFarm (`cgi_steal_product.php`: `output/2 < totalCome`), và nó là một ngưỡng hay:
+/// nó buộc người lấy trộm phải để yên cho con vật làm việc, tức là người chăm chỉ không bao giờ
+/// mất sạch. Mỗi con chỉ bị lấy **một đơn vị một lần**, người lấy được ghi vào con vật ấy — nên
+/// mười người ghé qua không vét được một con bò.
+///
+/// **Nhưng "một nửa" phải là một nửa của thứ con vật thật sự cho được**, không phải một nửa của
+/// `output`. Hai con số ấy không bằng nhau, và chỗ này là chỗ chúng khác nhau: một con gà có
+/// `output = 20` mà chỉ sống được `158400` giây và cho ra một phần mỗi `21420` giây — tức là
+/// **nhiều nhất bảy quả trong cả đời nó**. Lấy một nửa của hai mươi thì không con gà nào trên đời
+/// chạm tới, và cái ngưỡng ấy không phải một cái ngưỡng chặt — nó là một cái ngưỡng không bao giờ
+/// mở, tức là cả tính năng ấy chết mà không ai thấy nó chết ở đâu.
 export const STEAL_SHARE = 0.5;
+
+/// Con vật này cả đời cho được nhiều nhất bao nhiêu phần sản phẩm.
+///
+/// Làm tròn **lên**, vì phần đầu tiên đến ngay lúc nó lớn xong (`graze()` đặt mốc khởi đầu là một
+/// nhịp trước lúc ấy), nên một con cho ra sáu lần thì thật sự có bảy phần.
+export const capacityOf = (animal) =>
+  animal ? Math.min(animal.yield, Math.ceil((animal.life - animal.grow) / animal.produce) + 1) : 0;
 
 /// Người đi lấy trộm sản phẩm phải có ngần này trong túi.
 export const STEAL_MIN_COIN = 500;
@@ -206,7 +220,7 @@ export function graze(ranch, now) {
       if (droppedAt === null || droppedAt === undefined) droppedAt = animal.grow - animal.produce;
       const made = Math.floor((clock - droppedAt) / animal.produce);
       if (made > 0) {
-        ready = Math.min(animal.yield, ready + made);
+        ready = Math.min(capacityOf(animal), ready + made);
         droppedAt += made * animal.produce;
       }
     }
@@ -280,7 +294,9 @@ export function raid(pen, thiefId, ownerId, { coin }) {
   if (thiefId === ownerId) return { ok: false, why: 'Đây là bãi chăn của bạn.' };
   if (coin < STEAL_MIN_COIN) return { ok: false, why: `Phải có ít nhất ${STEAL_MIN_COIN} đồng trong túi.` };
   if (pen.raided[thiefId]) return { ok: false, why: 'Bạn đã lấy trộm con này rồi.' };
-  if (pen.ready <= animal.yield * STEAL_SHARE) return { ok: false, why: 'Con này chưa cho ra đủ để lấy.' };
+  if (pen.ready <= capacityOf(animal) * STEAL_SHARE) {
+    return { ok: false, why: 'Con này chưa cho ra đủ để lấy.' };
+  }
   return { ok: true, amount: 1, product: animal.product };
 }
 

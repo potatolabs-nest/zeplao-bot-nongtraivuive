@@ -18,7 +18,7 @@ import { CROPS, cropById, LAND, RED_LAND } from './rules/catalogue.mjs';
 import {
   newRanch, graze, penOf, emptyPen, feed, buy, collect, butcher, raid, catchMouse,
   openHouse, chores as ranchChores, hungry, hopperLasts, penFor, roomFor, houseAt,
-  appetite, bite, STEAL_SHARE, MAX_FEED, MOUSE_CHANCE, HELP_EXP_PER_TEN,
+  appetite, bite, STEAL_SHARE, MAX_FEED, MOUSE_CHANCE, HELP_EXP_PER_TEN, capacityOf,
 } from './rules/ranch.mjs';
 import { ANIMALS, animalById, HOUSES, GRASS } from './rules/animals.mjs';
 
@@ -631,7 +631,7 @@ test('một con vật không phải một cái máy in', () => {
   const chicken = animalById(1001);
   // Chạy lâu hơn cả vòng đời.
   const old = graze(ranch, (chicken.life * 3 / SPEED) * 1000);
-  assert.equal(old.pens[0].ready, chicken.yield, 'sản phẩm bị chặn ở sản lượng của con vật');
+  assert.equal(old.pens[0].ready, capacityOf(chicken), 'sản phẩm bị chặn ở sức chứa thật của con vật');
   assert.equal(old.pens[0].grown, chicken.life, 'và con vật không sống quá đời nó');
 });
 
@@ -661,7 +661,13 @@ test('bắt sản phẩm, và giết thịt chỉ khi đã hết đời', () => 
 
 test('lấy trộm sản phẩm: chỉ khi đã cho ra hơn một nửa', () => {
   const chicken = animalById(1001);
-  const half = Math.floor(chicken.yield * STEAL_SHARE);
+  // **Sức chứa**, không phải `output`: một con gà có `output = 20` mà cả đời chỉ cho được bảy
+  // phần. Lấy một nửa của hai mươi thì không con gà nào chạm tới, và cả tính năng ấy chết mà
+  // không ai thấy nó chết ở đâu.
+  const capacity = capacityOf(chicken);
+  assert.equal(capacity, 8, `một con gà cho được ${capacity} phần trong cả đời`);
+  assert.ok(capacity < chicken.yield, 'và nó ít hơn `output` — đó chính là chỗ hai con số khác nhau');
+  const half = Math.floor(capacity * STEAL_SHARE);
   const rich = { coin: 1000 };
 
   const thin = { ...penOf(1001, { grown: chicken.grow }), ready: half };

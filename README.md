@@ -51,7 +51,7 @@ là do quyết định chứ không phải xếp bừa rồi mong nó vừa:
 | | |
 | --- | --- |
 | Trên | Ai đang nhìn, **cấp**, và **ví tiền** — ở mọi màn, từ khung hình đầu tiên. Dấu `+` cạnh ví là quà của ngày, và nó chỉ hiện khi có quà để nhận |
-| Giữa | Một trong năm: khu vườn, bãi chăn, chợ, hàng xóm, sổ. Hoặc một màn cho một thửa đất |
+| Giữa | Một trong năm: khu vườn, bãi chăn, chợ (có cả túi để bán), hàng xóm, sổ. Hoặc một màn cho một thửa đất |
 | Dưới | Năm tab, và **một chấm đỏ trên tab đang có việc** |
 
 Vài thứ là như thế có chủ ý:
@@ -144,6 +144,11 @@ Ba chỗ khác cố ý làm khác bản gốc, và cả ba đều được ghi n
 - **Cỏ dại và sâu bọ trừ thẳng một phần mười sản lượng mỗi thứ, trần một nửa.** Bản gốc cộng dồn
   theo thời gian từng hành động và cũng chặn ở một nửa. Cùng trần, một luật dễ nói hơn: nhìn vào
   thửa đất là biết mình sắp mất bao nhiêu.
+- **"Một nửa" của một con vật là một nửa của thứ nó thật sự cho được, không phải một nửa của
+  `output`.** Hai con số ấy không bằng nhau: một con gà có `output = 20` mà cả đời chỉ cho được tám
+  phần. Bản gốc so với `output`, nên với con gà thì ngưỡng ấy **không bao giờ mở** — tính năng chết
+  mà không có gì cho biết nó đã chết. Ở đây sức chứa được tính từ vòng đời và nhịp cho sản phẩm, và
+  cùng con số ấy dùng cho cả cái thanh trong khung lẫn ngưỡng lấy trộm.
 - **Khai đất gác bằng cả cấp lẫn tiền.** Bản gốc gác bằng cả hai, nhưng phép kiểm cấp ở đó so `exp`
   với một khoá tên là `exp` mà bảng ấy không có — nên trên thực tế chỉ tiền có tác dụng. Một cái
   gác hỏng trong bản gốc không phải lý do để viết lại một cái gác hỏng.
@@ -172,6 +177,8 @@ trước khi chạy, nên một bản checkout mới chỉ cần `cd bots/farmbo
 | Số thửa lúc đầu, bốn bài học trên bốn thửa đầu tiên | `source/nc/user_init.php` |
 | Bảng số quả hái trộm, sàn sáu phần mười, chó cắn 20%/40% | `source/nc/mod/farmlandstatus_scrounge.php` |
 | Cỏ là thời gian; một phần mười kinh nghiệm khi cho ăn hộ | `source/mc/mod/cgi_feed_food.php` |
+| Hạn mức 50 lần phá và 150 lần làm hộ mỗi ngày | `source/cron/daily.php` |
+| Ngưỡng "hơn một nửa" khi lấy trộm sản phẩm, và 500 đồng vốn của kẻ trộm | `source/mc/mod/cgi_steal_product.php` |
 
 Chỉ **tên** được đổi sang tiếng Việt — `白萝卜` thành `Củ cải trắng`. Một trang trại tiếng Việt ghi
 `白萝卜` trên gói hạt thì không phải một bản port, mà là một bản sao.
@@ -291,9 +298,10 @@ Cả ba đều thuộc loại **không báo gì cả**, và cả ba đều cho r
 
 - **Khoá cứng tốc độ.** `FARM_SPEED` là một biến môi trường, không phải một bảng cân bằng đã được
   thử ở nhiều mức. Con số 20 được chọn bằng lập luận, không bằng cách chơi thử một tuần.
-- **Bãi chăn chưa có khoá cứng phần xã hội.** Hái trộm trên nông trại thì có đủ (sàn, một lần một
-  vụ, chó); lấy trộm sản phẩm trong bãi chăn thì mới có ngưỡng một nửa và một lần mỗi con, chưa có
-  gì tương đương con chó.
+- **Bãi chăn chưa có con chó.** Hái trộm trên nông trại thì có đủ ba thứ chặn (sàn sáu phần mười,
+  một lần một vụ mỗi người, và chó cắn); lấy trộm sản phẩm trong bãi chăn thì mới có ngưỡng một
+  nửa sức chứa và một lần mỗi con, chưa có gì tương đương con chó — tức là bên ấy chưa có gì
+  **phạt** người lấy trộm.
 - **Chưa có nhiệm vụ.** Bản gốc có hai chuỗi nhiệm vụ cho người mới; ở đây bốn thửa đất lúc đầu tự
   làm việc ấy, và chưa có gì thay cho phần còn lại.
 - **Chưa có hoa và quà tặng.** Bản gốc cho tặng hoa cho hàng xóm (`allflower.php`, hai mươi bó hoa

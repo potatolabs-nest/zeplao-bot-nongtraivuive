@@ -482,6 +482,23 @@ html, body {
 
 .muted { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 12px; }
 
+/* Túi ở đầu tab Chợ. Một cái tiêu đề và một đường kẻ, đủ để tách "thứ đang có" khỏi "thứ để mua" —
+   hai việc khác nhau, và trộn chúng vào một danh sách là để người ta bấm nhầm. */
+.bag-title {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.bag-rule {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 6px 0 8px;
+}
+
 /* ---- nơi nói ------------------------------------------------------------------------------ */
 
 #says {
