@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Nông trại: trồng, tưới, hái, và hái trộm của hàng xóm",
   "scripts": {
+    "prepare": "node ../../tools/gen-catalogue.mjs && node ../../tools/gen-animals.mjs",
     "start": "node farmbot.mjs",
-    "test": "node --test --test-concurrency=1 farm.test.mjs flow.test.mjs"
+    "test": "node ../../tools/gen-catalogue.mjs && node ../../tools/gen-animals.mjs && node --test --test-concurrency=1 farm.test.mjs flow.test.mjs"
   },
   "engines": { "node": ">=18" }
 }

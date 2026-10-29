@@ -1,3 +1,12 @@
 node_modules/
 .env
 data/
+
+# Bản cầu nối của nền tảng: nó được ghi vào mọi gói lúc upload, đè lên bản có sẵn. Không phải mã
+# của repo này, và `tools/widget-selftest.mjs` tự tải nó về nếu thiếu.
+bots/*/widget/zeplao.js
+
+# Bảng số đã sinh. `tools/gen-*.mjs` dựng lại chúng từ `data-raw/` trong một phần nghìn giây, nên
+# để chúng trong git là để hai bản sao của cùng một con số trôi khỏi nhau.
+bots/*/rules/catalogue.mjs
+bots/*/rules/animals.mjs

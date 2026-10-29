@@ -155,10 +155,13 @@ Ba chỗ khác cố ý làm khác bản gốc, và cả ba đều được ghi n
 sửa tay**:
 
 ```bash
-node tools/parse-php-data.mjs ../qfarm/0.1/_release/core/config/nc/cropstype.php data-raw/cropstype.json
 node tools/gen-catalogue.mjs    # -> bots/farmbot/rules/catalogue.mjs
 node tools/gen-animals.mjs      # -> bots/farmbot/rules/animals.mjs
 ```
+
+Hai file ấy **không nằm trong git**: chúng dựng lại được từ `data-raw/` trong một phần nghìn giây,
+nên để chúng trong kho là để hai bản sao của cùng một con số trôi khỏi nhau. `npm test` dựng chúng
+trước khi chạy, nên một bản checkout mới chỉ cần `cd bots/farmbot && npm test` là đủ.
 
 | Thứ | Từ đâu |
 | --- | --- |
