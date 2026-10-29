@@ -1,0 +1,544 @@
+/*
+ * Cái khung: một cột không bao giờ nhúc nhích, và một khu vườn ở giữa nó.
+ *
+ * Khung rộng chừng 390×640 trên điện thoại và **không bao giờ chiếm cả màn hình**, nên thứ nằm
+ * trong đó là do quyết định chứ không phải xếp bừa rồi mong nó vừa. Cái cột ấy có ba tầng: trên
+ * cùng là người đang nhìn và những gì họ có, dưới cùng là đường đi, ở giữa là khu vườn — và chỉ
+ * tầng giữa co giãn.
+ *
+ * Mọi con số ở đây là `rem` hoặc `fr` chứ không phải pixel, vì cái khung ấy cao bao nhiêu là do
+ * ứng dụng quyết định và nó khác nhau giữa các máy. Một khu vườn vẽ theo pixel là một khu vườn
+ * tràn ra ngoài khung trên đúng cái máy nhỏ nhất.
+ */
+
+:root {
+  /* Ứng dụng ghi đè mấy cái này bằng màu người dùng đang dùng, qua `Zeplao.theme`. Chúng có mặt ở
+     đây làm mặc định, để mở trang trực tiếp trên máy thì nó vẫn đọc được. */
+  --bg: #0d2a1c;
+  --text: #e8f0e9;
+  --primary: #e9c46a;
+  --muted: #9db4a5;
+  --line: #1d4531;
+
+  --soil: #6b4a2f;
+  --soil-dark: #4a3220;
+  --soil-red: #7a3a2a;
+  --soil-dry: #8a7350;
+  --ready: #f2c14e;
+  --bad: #e2604a;
+  --room-h: 640px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Không cho cuộn cả trang: cái cuộn được là khu vườn ở giữa, không phải cái khung. Một trang
+     cuộn được là một trang mà thanh trên cùng trôi đi mất. */
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: var(--room-h);
+  max-height: 100vh;
+}
+
+/* ---- tầng trên: ai, cấp, ví --------------------------------------------------------------- */
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+#bar .who {
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#bar .lv {
+  color: var(--muted);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+
+#bar .coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+#bar .coin i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: inset 0 -2px 0 #00000033;
+}
+
+#bar .plus {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #0d2a1c;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ---- tầng giữa: khu vườn ------------------------------------------------------------------ */
+
+#screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+#screen > section { padding: 10px 12px 12px; }
+
+/* Lưới thửa đất: ba cột, vì ba cột là số thửa vừa một khung 390 mà mỗi thửa còn đủ to để chạm
+   trúng bằng ngón tay cái. Bốn cột thì mỗi thửa bé hơn ngón tay. */
+#plots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.plot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #163a28 0%, #0f3122 100%);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  aspect-ratio: 1 / 1.06;
+  overflow: hidden;
+}
+
+.plot:disabled { opacity: .72; cursor: default; }
+
+.plot .soil {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: block;
+  border-radius: 8px;
+  background: var(--soil-dark);
+  border-bottom: 3px solid var(--soil);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Đất khô và đất đỏ nhìn ra được ngay, không cần đọc chữ: đó là hai thứ đổi cách chơi. */
+.plot.dry .soil { background: var(--soil-dry); border-bottom-color: #6b5a3c; }
+.plot.land-red .soil { background: var(--soil-red); border-bottom-color: #5a2a1e; }
+
+.plot .art { width: 100%; height: 100%; display: block; }
+
+/* Ba trạng thái của một cây, và cả ba đều phải nhìn ra được mà không cần đọc chữ. Cây tàn thì mờ
+   đi, cây sắp chín thì sáng hơn một chút — một khu vườn mười tám thửa mà thửa nào cũng cùng một
+   độ sáng thì không ai biết mình có việc gì. */
+.plot .art-dead { opacity: .7; }
+/* Đất trống: ba luống cày, mờ. Nó là trạng thái mặc định của phần lớn thửa đất lúc đầu, nên nó
+   phải lùi về sau chứ không được kêu. */
+.plot .art-empty { opacity: .8; }
+.plot.ripe .art-plant { filter: drop-shadow(0 0 3px #f2c14e88); }
+.pen .art-beast { display: block; }
+.art-grass { width: 100%; height: 100%; display: block; }
+
+.plot .label {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Một thửa chín phải nhìn ra được từ đầu kia của căn phòng. Nó là thứ duy nhất trên màn hình này
+   đang chờ một cú bấm, và nếu phải đọc mới biết thì người ta sẽ không đọc. */
+.plot.ripe {
+  border-color: var(--ready);
+  box-shadow: 0 0 0 1px var(--ready), 0 0 14px -4px var(--ready);
+}
+
+.plot.dead { border-color: #6b5a44; }
+
+.plot .ready {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 20px;
+  background: var(--ready);
+  color: #2a1f05;
+}
+
+.plot .ready.dead { background: #8a7a5c; color: #1a1408; }
+
+.plot .badge {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: #000000aa;
+}
+
+.plot .badge.weed { bottom: 20px; left: 3px; color: #9ad86a; }
+.plot .badge.pest { bottom: 20px; right: 3px; color: #e2a04a; }
+.plot .badge.dry { top: 3px; left: 3px; color: #6fc4e8; }
+.plot .badge.red { bottom: 3px; left: 3px; color: #e2826a; }
+
+#plots .land { grid-column: 1 / -1; }
+
+/* ---- nút ---------------------------------------------------------------------------------- */
+
+.btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #163a28;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn:disabled {
+  opacity: .5;
+  cursor: default;
+  font-weight: 500;
+}
+
+/* Lý do nằm ngay trong nút, dưới chữ. Nó là thứ trả lời câu hỏi người ta đang tự hỏi đúng lúc
+   họ hỏi nó. */
+.btn small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.btn:disabled small { color: #c2a89a; }
+
+.btn.primary {
+  background: var(--primary);
+  color: #241a02;
+  border-color: var(--primary);
+}
+
+.btn.primary small { color: #5a4408; }
+
+.btn.quiet { background: transparent; }
+.btn.big { padding: 14px; font-size: 16px; }
+.btn.wide { grid-column: 1 / -1; }
+.btn.small { padding: 7px 10px; font-size: 13px; }
+
+/* ---- màn của một thửa --------------------------------------------------------------------- */
+
+#sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#sheet-head b { flex: 1 1 auto; }
+
+#sheet-back {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sheet-art {
+  width: 130px;
+  height: 130px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  background: var(--soil-dark);
+  border-bottom: 4px solid var(--soil);
+  overflow: hidden;
+}
+
+.sheet-art .art { width: 100%; height: 100%; }
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.facts span { color: var(--muted); }
+
+.acts { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- bãi chăn ----------------------------------------------------------------------------- */
+
+#hopper { margin-bottom: 10px; }
+
+#hopper-bar {
+  height: 8px;
+  border-radius: 20px;
+  background: #0a2015;
+  overflow: hidden;
+}
+
+#hopper-bar i {
+  display: block;
+  height: 100%;
+  background: #5faa48;
+  transition: width .3s;
+}
+
+#hopper-bar i.dry { background: var(--bad); }
+
+#hopper-note {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#pens {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #143726;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  aspect-ratio: 1 / 1.05;
+}
+
+.pen:disabled { opacity: .72; cursor: default; }
+.pen.empty { border-style: dashed; opacity: .75; }
+.pen.ready { border-color: var(--ready); box-shadow: 0 0 0 1px var(--ready); }
+
+.pen .beast { flex: 1 1 auto; width: 100%; min-height: 0; }
+.pen .art { width: 100%; height: 100%; }
+
+.pen .label {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Vòng đời của con vật, vẽ ra. Một con gà non và một con gà gần hết đời trông khác nhau, và đó là
+   toàn bộ điều cái chuồng này đang nói. */
+.pen .bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 20px;
+  background: #0a2015;
+  overflow: hidden;
+}
+
+.pen .bar i { display: block; height: 100%; background: #7fb85a; }
+
+.pen .ready {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 20px;
+  background: var(--ready);
+  color: #2a1f05;
+}
+
+#feed-row { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- chợ ---------------------------------------------------------------------------------- */
+
+#shop-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+
+.tab, #shop-tabs .tab {
+  flex: 1 1 auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#shop-tabs .tab.on {
+  background: #1d4531;
+  color: var(--text);
+  font-weight: 650;
+}
+
+#shop-body { display: flex; flex-direction: column; gap: 8px; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #143726;
+}
+
+.card.locked { opacity: .62; }
+.card.poor { opacity: .74; }
+.card > b { font-size: 14px; }
+
+.card .sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.card .btn { margin-top: 5px; }
+
+/* ---- hàng xóm và sổ ------------------------------------------------------------------------ */
+
+#visit-body, #log-body { display: flex; flex-direction: column; gap: 8px; }
+
+.card .btn.small { width: auto; align-self: flex-start; }
+
+.line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.line time { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
+
+.muted { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 12px; }
+
+/* ---- nơi nói ------------------------------------------------------------------------------ */
+
+#says {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 62px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #061a10e8;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  text-align: center;
+  z-index: 20;
+}
+
+/* ---- tầng dưới: đi đâu -------------------------------------------------------------------- */
+
+#tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--line);
+  flex: 0 0 auto;
+  background: var(--bg);
+}
+
+#tabs .tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+#tabs .tab.on { color: var(--primary); font-weight: 650; }
+
+/* Một chấm trên tab đang có việc. Nông trại là một trò chơi người ta mở ra để xem có gì cần làm
+   không; nếu câu trả lời phải tìm bằng cách bấm vào từng tab thì phần lớn những lần mở ra kết
+   thúc bằng việc đóng lại. */
+#tabs .dot {
+  position: absolute;
+  top: 4px;
+  right: 50%;
+  margin-right: -20px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+
+/* Màn hẹp: hai cột thửa thay vì ba, để mỗi thửa vẫn chạm trúng được bằng ngón tay. */
+@media (max-width: 340px) {
+  #plots { grid-template-columns: repeat(2, 1fr); }
+  #pens { grid-template-columns: 1fr; }
+}

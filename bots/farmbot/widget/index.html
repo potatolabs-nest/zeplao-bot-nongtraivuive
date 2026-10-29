@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Nông trại</title>
+<script>
+  (function () {
+    var path = window.location.pathname;
+    if (!path.endsWith('/')) {
+      var last = path.split('/').pop() || '';
+      path = last.includes('.') ? path.replace(/[^/]*$/, '') : path + '/';
+    }
+    window.__farmAsset = function (name) { return window.location.origin + path + name; };
+
+    /*
+     * Thử lại bằng một khoá cache **chưa ai từng xin**, không phải thử lại y nguyên.
+     *
+     * Thứ hỏng ở đây không phải cái mạng lúc này mà là **một bản hỏng đã bị đóng băng**: máy chủ
+     * phục vụ file widget kèm `cache-control: public, max-age=31536000, immutable` cho **mọi** phản
+     * hồi, kể cả `404`, và CDN cache đúng cái 404 ấy. Một cú 404 thoáng qua — một request rơi vào
+     * vài giây sau khi upload, lúc bundle chưa đọc được — thành một file biến mất **suốt một năm**
+     * ở edge đấy, trong khi edge khác vẫn tốt.
+     *
+     * Nên khoá phải **ngẫu nhiên mỗi lần**. Một khoá cố định cũng đóng băng được.
+     */
+    window.__farmRetry = function (name, round) {
+      if (!round) return window.__farmAsset(name);
+      var fresh = round + '-' + Date.now().toString(36)
+        + '-' + Math.random().toString(36).slice(2, 8);
+      return window.__farmAsset(name) + '?r=' + fresh;
+    };
+
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = window.__farmAsset('style.css');
+    css.onerror = function () {
+      var round = (css.__round || 0) + 1;
+      if (round > 3) return;
+      var again = document.createElement('link');
+      again.rel = 'stylesheet';
+      again.href = window.__farmRetry('style.css', round);
+      again.__round = round;
+      again.onerror = css.onerror;
+      css = again;
+      document.head.appendChild(again);
+    };
+    document.head.appendChild(css);
+  }());
+</script>
+
+<!--
+  Bốn màn trong một trang, mỗi lúc một màn, trong một cái khung không bao giờ nhúc nhích: trên
+  cùng là ai đang nhìn và đang có gì, dưới cùng là việc phải làm, ở giữa là khu vườn.
+
+  Dựng sẵn từ đầu chứ không ghi vào `innerHTML` mỗi lần bot đẩy trạng thái: một khu vườn mười tám
+  thửa vẽ lại từ một chuỗi mỗi lần có người tưới một thửa thì mất cái thửa đang nằm dưới ngón tay
+  người ta.
+-->
+<div id="app">
+
+  <!-- Luôn ở đó, từ khung hình đầu tiên, bất kể màn nào đang hiện. Cấp và tiền là hai con số mà
+       mọi con số khác trong này nói về chúng, và đi tìm chúng không phải việc ai đó phải làm. -->
+  <header id="bar">
+    <span class="who" id="who"></span>
+    <span class="lv" id="lv">…</span>
+    <span class="coin" id="coin"><i></i><b id="coin-num">…</b></span>
+    <button class="plus" id="plus" type="button" title="Nhận quà hôm nay">+</button>
+  </header>
+
+  <main id="screen">
+
+    <!-- Khu vườn. -->
+    <section id="farm" hidden>
+      <div id="plots"></div>
+      <div id="tip" hidden></div>
+    </section>
+
+    <!-- Một màn cho mỗi thửa: gieo gì, hoặc làm gì. Một màn riêng chứ không phải một menu bật lên
+         trên thửa, vì trên điện thoại một menu bật lên ở mép dưới màn hình thì cái thửa nó đang
+         nói về nằm ngoài tầm mắt. -->
+    <section id="sheet" hidden>
+      <header id="sheet-head">
+        <button id="sheet-back" type="button">←</button>
+        <b id="sheet-title"></b>
+      </header>
+      <div id="sheet-body"></div>
+    </section>
+
+    <!-- Bãi chăn. -->
+    <section id="ranch" hidden>
+      <div id="hopper">
+        <div id="hopper-bar"><i id="hopper-fill"></i></div>
+        <span id="hopper-note"></span>
+      </div>
+      <div id="pens"></div>
+      <div id="feed-row"></div>
+    </section>
+
+    <!-- Chợ: hạt giống và con vật. -->
+    <section id="shop" hidden>
+      <nav id="shop-tabs"></nav>
+      <div id="shop-body"></div>
+    </section>
+
+    <!-- Hàng xóm: ai đang có gì để ghé. -->
+    <section id="visit" hidden>
+      <div id="visit-body"></div>
+    </section>
+
+    <!-- Sổ: chuyện gì đã xảy ra với khu vườn này. -->
+    <section id="log" hidden>
+      <div id="log-body"></div>
+    </section>
+  </main>
+
+  <!-- Nơi duy nhất nói được một câu. Widget không mở được hộp thoại — `alert` và `confirm` bị
+       sandbox chặn và trả về ngay lập tức. -->
+  <div id="says" hidden></div>
+
+  <!-- Đi đâu, ở dưới cùng, chỗ ngón tay với tới. -->
+  <nav id="tabs"></nav>
+</div>
+
+<!--
+  Nạp từng file một, và **cái dây ấy không được phép đứt trong im lặng**.
+
+  Nó chỉ nối tiếp ở `onload`, nên một file không tải được là dừng ngay tại đó: `farm.js` không bao
+  giờ chạy, `z.ready()` không bao giờ được gọi, máy chủ chờ mãi — và cái người ta nhìn thấy là một
+  cái khung **trắng bóc**, không một dòng lỗi ở đâu. Cách duy nhất từng phát hiện ra nó là có người
+  mở ra rồi nhắn "trắng bóc".
+
+  Nên: thử lại ba lần với ba khoá cache khác; file phụ thì bỏ qua mà đi tiếp; còn hai file không
+  thiếu được thì **nói ra thành chữ trên màn hình**, kèm tên file, và để người dùng bấm tải lại.
+-->
+<script>
+  (function () {
+    var files = ['zeplao.js', 'draw.js', 'farm.js'];
+
+    /*
+     * Hai file sống còn, và chúng phải **chứng minh là đã chạy**.
+     *
+     * Nạp xong không có nghĩa là có gì trong đó: một file trả về `200` với thân rỗng thì `onerror`
+     * không kêu một tiếng, trình duyệt coi như nạp xong, dây đi tiếp — rồi trang chết ở một chỗ
+     * chẳng liên quan, hoặc không chết mà chỉ đơn giản là không bao giờ gọi `z.ready()`. Vẫn đúng
+     * cái khung trắng ấy, lần này còn khó tìm hơn.
+     */
+    var NEEDED = { 'zeplao.js': 1, 'farm.js': 1 };
+    // Ba cái tên, và mỗi cái là của riêng một file. Cái tên ấy vừa là bằng chứng file đã chạy, vừa
+    // là chỗ nối — nên nó phải không đụng ai. Xem đầu `draw.js` để biết chuyện gì xảy ra khi hai
+    // file trong cùng một gói khai trùng một cái tên.
+    var LEFT_BEHIND = { 'zeplao.js': 'Zeplao', 'draw.js': 'farmArt', 'farm.js': 'farmReady' };
+
+    function took(name) {
+      var mark = LEFT_BEHIND[name];
+      return !mark || typeof window[mark] !== 'undefined';
+    }
+
+    /*
+     * Và **treo không phải là hỏng**: một request có thể chỉ đơn giản là không bao giờ trả lời.
+     * Treo thì `onload` không kêu mà `onerror` cũng không, nên dây nạp đứng im vô hạn.
+     *
+     * Bốn mươi lăm giây, đo ra chứ không nghĩ ra: cả bộ nặng vài chục ki-lô-bai, nhưng trên một
+     * đường 60 kbps một file cũng mất hàng chục giây — và đặt ngưỡng thấp hơn thế là bắn vào đúng
+     * cái máy cần được kiên nhẫn nhất. Quá hạn thì **không nạp lại trang**: trên điện thoại, ứng
+     * dụng đẩy trạng thái vào **một lần** lúc trang mở, nên nạp lại là mất luôn trạng thái ấy.
+     */
+    var STALLED_MS = 45000;
+
+    function load(i, round) {
+      if (i >= files.length) return;
+
+      var name = files[i];
+      var script = document.createElement('script');
+      var settled = false;
+      var clock = null;
+
+      var failed = function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(clock);
+        if (round < 3) { setTimeout(function () { load(i, round + 1); }, 200 * (round + 1)); return; }
+        if (!NEEDED[name]) { load(i + 1, 0); return; }
+        stuck(name);
+      };
+
+      var stalled = function () {
+        if (settled) return;
+        settled = true;
+        if (!NEEDED[name]) { load(i + 1, 0); return; }
+        stuck(name);
+      };
+
+      script.src = window.__farmRetry(name, round);
+      script.onload = function () {
+        if (settled) return;
+        if (!took(name)) { failed(); return; }
+        settled = true;
+        clearTimeout(clock);
+        load(i + 1, 0);
+      };
+      script.onerror = failed;
+      clock = setTimeout(stalled, STALLED_MS);
+
+      document.body.appendChild(script);
+    }
+
+    function stuck(name) {
+      var box = document.createElement('div');
+      box.setAttribute('style', 'position:fixed;inset:0;display:flex;flex-direction:column;'
+        + 'align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;'
+        + 'background:#0b2b1a;color:#d6e6db;font:14px/1.5 -apple-system,BlinkMacSystemFont,'
+        + '"Segoe UI",Roboto,sans-serif');
+      var what = document.createElement('div');
+      what.textContent = 'Không tải được ' + name + '.';
+      var how = document.createElement('div');
+      how.setAttribute('style', 'font-size:12px;opacity:.75');
+      how.textContent = 'Mạng hoặc bộ nhớ đệm đang giữ một bản hỏng. Bấm để thử lại.';
+      var again = document.createElement('button');
+      again.setAttribute('style', 'font:inherit;font-weight:650;padding:8px 18px;border:0;'
+        + 'border-radius:10px;background:#e9c46a;color:#08251a;cursor:pointer');
+      again.textContent = 'Tải lại';
+      again.onclick = function () { window.location.reload(); };
+      box.appendChild(what); box.appendChild(how); box.appendChild(again);
+      document.body.appendChild(box);
+    }
+
+    load(0, 0);
+  }());
+</script>

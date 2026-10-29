@@ -848,74 +848,128 @@ export async function run(token, { signal, api = API } = {}) {
       .slice(0, BOARD_SIZE);
   }
 
-  /// Đi sang vườn người khác: nhổ cỏ, bắt sâu, tưới, hái trộm.
+  /**
+   * Đi sang vườn người khác: hái trộm, nhổ cỏ, bắt sâu, tưới.
+   *
+   * `stealAll` và `helpAll` là những gì cái khung thật sự gửi — không phải `steal` kèm một số hiệu
+   * thửa. Cái khung biết số hiệu thửa, nhưng nó là **một file ai cũng sửa được**, và "làm hộ cả
+   * vườn" là điều người ta muốn bấm. Nên bot nhận ý định rồi tự quyết định làm những thửa nào —
+   * trên nông trại của chính nó, bằng chính những hàm thuần đã kiểm.
+   *
+   * Một lần ghé làm **hết những gì làm được**, cộng lại thành một câu trả lời. Ba người ghé một
+   * khu vườn sáu thửa là ba tin nhắn nếu mỗi việc một tin, và đó là một cuộc trò chuyện bị chiếm.
+   */
   async function visit(userId, targetId, what, index, now) {
     const target = farms.get(targetId);
     if (!target) return 'Không tìm thấy nông trại ấy.';
     const me = farms.get(userId);
     const mine = advance(me, now);
     const theirs = advance(target, now);
-    const moved = { ...theirs, ranch: graze(theirs.ranch ?? newRanch(now), now) };
+    let moved = { ...theirs, ranch: graze(theirs.ranch ?? newRanch(now), now) };
 
-    if (what === 'steal') {
-      const plot = moved.plots[index];
+    const hasDog = Boolean(moved.dog && moved.dog.until > now);
+    const house = { hasCrop: isFarming(mine), coin: mine.coin, hasDog };
+
+    // ---- hái trộm ----
+    const stealFrom = async (plotIndex) => {
+      const plot = moved.plots[plotIndex];
       if (!plot) return null;
-      const got = steal(plot, userId, targetId, {
-        hasCrop: isFarming(mine),
-        coin: mine.coin,
-        hasDog: Boolean(moved.dog && moved.dog.until > now),
-      });
-      if (!got.ok) return got.why;
+      const got = steal(plot, userId, targetId, { ...house, coin: mine.coin });
+      if (!got.ok) return null;
 
       if (got.caught) {
-        // Chó cắn: tiền đi từ người lén vào sang chủ nhà, và không sinh ra đồng nào.
-        const poor = { ...mine, coin: Math.max(0, mine.coin - got.fine) };
-        farms.set(userId, poor);
-        moved.coin += got.fine;
+        // Chó cắn: tiền đi từ người lén vào sang chủ nhà, và không sinh ra đồng nào. Con số ấy âm
+        // với người này và dương với người kia đúng bằng nhau — không có đồng nào được tạo ra.
+        const fine = Math.min(mine.coin, got.fine);
+        mine.coin -= fine;
+        moved.coin += fine;
         moved.plots = moved.plots.map((p, i) =>
-          (i === index ? { ...p, thieves: { ...p.thieves, [userId]: 0 } } : p));
-        moved.log = note(moved.log, `Chó nhà ${moved.name || 'hàng xóm'} cắn bạn, mất ${got.fine} đồng.`, now);
-        const mineLog = note(poor.log, `Chó nhà bạn cắn một người lén vào, được ${got.fine} đồng.`, now);
-        farms.set(targetId, { ...moved, log: mineLog });
-        await pushTo(targetId);
-        return `Chó nhà người ta cắn bạn, mất ${got.fine.toLocaleString('vi-VN')} đồng.`;
+          (i === plotIndex ? { ...p, thieves: { ...p.thieves, [userId]: 0 } } : p));
+        moved.log = note(moved.log, `Chó nhà bạn cắn một người lén vào, được ${fine.toLocaleString('vi-VN')} đồng.`, now);
+        return { caught: true, fine };
       }
 
-      const crop = cropById(plot.crop);
-      const rich = {
-        ...mine,
-        fruit: { ...mine.fruit, [plot.crop]: (mine.fruit[plot.crop] ?? 0) + got.amount },
-      };
-      farms.set(userId, rich);
-      moved.plots = moved.plots.map((p, i) => (i === index
+      mine.fruit = { ...mine.fruit, [plot.crop]: (mine.fruit[plot.crop] ?? 0) + got.amount };
+      moved.plots = moved.plots.map((p, i) => (i === plotIndex
         ? { ...p, yieldLeft: p.yieldLeft - got.amount, thieves: { ...p.thieves, [userId]: got.amount } }
         : p));
-      moved.log = note(moved.log, `${mine.name || 'Ai đó'} hái trộm ${got.amount} ${crop.name}.`, now);
-      farms.set(targetId, moved);
-      await pushTo(targetId);
-      return `Hái trộm được ${got.amount} ${crop.name}.`;
+      return { cropId: plot.crop, amount: got.amount };
+    };
+
+    const stolen = [];
+    let bitten = 0;
+    if (what === 'stealAll' || what === 'steal') {
+      const targets = what === 'steal'
+        ? [index]
+        : moved.plots
+          .map((plot, at) => ({ plot, at }))
+          .filter(({ plot }) => plot.stage === 6 && plot.yieldLeft > plot.floor && !plot.thieves?.[userId])
+          .map(({ at }) => at);
+      for (const at of targets) {
+        const got = await stealFrom(at);
+        if (!got) continue;
+        // Bị chó cắn thì dừng lại ngay, không đi tiếp sang thửa khác. Một con chó cắn được một lần
+        // là điều con chó ấy đang nói, và đi tiếp sang thửa sau là không nghe nó.
+        if (got.caught) { bitten = got.fine; break; }
+        stolen.push(got);
+      }
     }
 
-    // Nhổ cỏ, bắt sâu, tưới: làm hộ thì được hai đồng và hai kinh nghiệm, và chủ vườn biết.
-    const plot = moved.plots[index];
-    if (!plot) return null;
-    const allowed = what === 'water' ? water(plot) : what === 'weed' ? weed(plot, userId) : pest(plot, userId);
-    if (!allowed.ok) return allowed.why;
+    // ---- làm hộ ----
+    const helped = [];
+    if (what === 'helpAll' || what === 'help' || what === 'water' || what === 'weed' || what === 'pest') {
+      const jobs = what === 'helpAll' || what === 'help'
+        ? moved.plots.map((plot, at) => ({ plot, at }))
+        : [{ plot: moved.plots[index], at: index }];
+      for (const { plot, at } of jobs) {
+        if (!plot?.crop || plot.stage === 7 || plot.stage === 6) continue;
+        for (const job of ['water', 'weed', 'pest']) {
+          const allowed = job === 'water' ? water(plot) : job === 'weed' ? weed(plot, userId) : pest(plot, userId);
+          if (!allowed.ok) continue;
+          moved.plots = moved.plots.map((p, i) => {
+            if (i !== at) return p;
+            if (job === 'water') return { ...p, dry: false };
+            if (job === 'weed') return { ...p, weeds: p.weeds - 1 };
+            return { ...p, pests: p.pests - 1 };
+          });
+          helped.push({ at, job });
+          break;         // một việc một thửa một lần ghé
+        }
+      }
+    }
 
-    moved.plots = moved.plots.map((p, i) => {
-      if (i !== index) return p;
-      if (what === 'water') return { ...p, dry: false };
-      if (what === 'weed') return { ...p, weeds: p.weeds - 1 };
-      return { ...p, pests: p.pests - 1 };
-    });
-    const helped = { ...mine, coin: mine.coin + HELP_COIN, exp: mine.exp + HELP_EXP };
-    farms.set(userId, helped);
-    const word = what === 'water' ? 'tưới nước' : what === 'weed' ? 'nhổ cỏ' : 'bắt sâu';
-    moved.log = note(moved.log, `${mine.name || 'Ai đó'} ghé ${word} hộ.`, now);
+    // Tiền công của việc làm hộ, cộng vào **trước khi** ghi xuống, để không có một khoảnh khắc nào
+    // nông trại trong bộ nhớ là một phiên bản nửa vời của chính nó.
+    if (helped.length) {
+      mine.coin += HELP_COIN * helped.length;
+      mine.exp += HELP_EXP * helped.length;
+      moved.log = note(moved.log, `${mine.name || 'Ai đó'} ghé làm hộ ${helped.length} thửa.`, now);
+    }
+    if (stolen.length) {
+      const words = stolen.map((one) => `${one.amount} ${cropById(one.cropId).name}`);
+      moved.log = note(moved.log, `${mine.name || 'Ai đó'} hái trộm ${words.join(', ')}.`, now);
+    }
+
+    farms.set(userId, mine);
     farms.set(targetId, moved);
     await pushTo(targetId);
+
+    // Một câu, ghép từ những gì đã xảy ra. Không có việc gì làm được thì nói ra vì sao — một cái
+    // nút bấm vào rồi im lặng là một cái nút dạy người ta rằng các nút ở đây không đáng tin.
+    const said = [];
+    if (bitten) said.push(`Chó nhà người ta cắn, mất ${bitten.toLocaleString('vi-VN')} đồng`);
+    if (stolen.length) said.push(`hái trộm được ${stolen.map((one) => `${one.amount} ${cropById(one.cropId).name}`).join(', ')}`);
+    if (helped.length) said.push(`làm hộ ${helped.length} thửa`);
+    if (said.length === 0) {
+      if (what === 'stealAll' || what === 'steal') {
+        if (!house.hasCrop) return 'Bạn chưa trồng cây nào thì đừng đi hái trộm.';
+        if (mine.coin < STEAL_MIN_COIN) return `Phải có ít nhất ${STEAL_MIN_COIN} đồng trong túi.`;
+        return 'Không còn gì để hái ở đó.';
+      }
+      return 'Không có gì cần làm ở đó.';
+    }
     save();
-    return `Đã ${word} hộ.`;
+    return said.join(', ') + '.';
   }
 
   /// Một dòng vào sổ của một người, giữ lại đúng `LOG_KEPT` dòng mới nhất.
