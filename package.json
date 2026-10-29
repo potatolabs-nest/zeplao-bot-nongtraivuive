@@ -1,0 +1,8 @@
+{
+  "name": "zeplao-bot-nongtraivuive",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A Cúc Cu bot that runs a nông trại: plant, water, harvest, and steal from the neighbours",
+  "engines": { "node": ">=18" }
+}

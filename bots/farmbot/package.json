@@ -1,0 +1,12 @@
+{
+  "name": "zeplao-farmbot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Nông trại: trồng, tưới, hái, và hái trộm của hàng xóm",
+  "scripts": {
+    "start": "node farmbot.mjs",
+    "test": "node --test --test-concurrency=1 farm.test.mjs flow.test.mjs"
+  },
+  "engines": { "node": ">=18" }
+}
