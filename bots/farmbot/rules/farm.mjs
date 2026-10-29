@@ -38,8 +38,9 @@ import {
  */
 export const SPEED = Number(process.env.FARM_SPEED ?? 20);
 
-/// Bao nhiêu giây trò chơi trôi qua giữa hai lần nhìn, tính từ một khoảng thật.
-export const elapsedFor = (ms) => Math.max(0, (ms / 1000) * SPEED);
+/// Bao nhiêu giây trò chơi trôi qua giữa hai lần nhìn, tính từ một khoảng thật. Một bước bên
+/// trong `advance()`, không phải một luật — nên nó không được xuất ra cho ai gọi.
+const elapsedFor = (ms) => Math.max(0, (ms / 1000) * SPEED);
 
 /**
  * Một con số trong [0, 1) lấy từ hệ điều hành, không phải từ V8.
@@ -590,9 +591,6 @@ export function upgradeLand(farm, index) {
 }
 
 // ---- đọc một nông trại --------------------------------------------------------------------------
-
-/// Cây đang trồng ở một thửa, hay `null`.
-export const cropAt = (plot) => cropById(plot.crop);
 
 /// Nông trại này có đang trồng gì không — điều kiện để được đi hái trộm.
 export const isFarming = (farm) => farm.plots.some((plot) => plot.crop && plot.stage !== 7);

@@ -131,9 +131,6 @@ export function newRanch(now) {
   };
 }
 
-/// Số chỗ đang có, cả hai loại.
-export const penCount = (ranch) => ranch.nests + ranch.sheds;
-
 /// Loại chuồng của chỗ thứ `index`. Nửa đầu là chuồng, phần còn lại là bãi.
 export const houseAt = (ranch, index) => (index < ranch.nests ? 'nest' : 'shed');
 

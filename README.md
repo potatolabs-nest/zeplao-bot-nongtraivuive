@@ -230,7 +230,7 @@ là điều cho phép một luật được kiểm bằng một phép gọi hàm
 ## Bộ thử
 
 ```bash
-cd bots/farmbot && npm test      # 63 phép kiểm, không mạng, khoảng hai giây
+cd bots/farmbot && npm test      # 69 phép kiểm, không mạng, khoảng ba giây
 node tools/css-check.mjs         # trang vẽ ra có được tạo hình không
 node tools/widget-selftest.mjs   # khung chạy thật trong một trình duyệt
 ```
@@ -239,6 +239,21 @@ Bộ thử thứ hai **chạy con bot thật** trước một bản đóng vai �
 đúng một luật mà cả thiết kế phiên dựa vào: một phiên chỉ mở được cho người ở trong cuộc trò
 chuyện của nó. Không có luật ấy ở đây thì bộ thử sẽ vui vẻ chứng minh rằng hai người ở hai nhóm
 khác nhau chơi được với nhau, trong khi production từ chối đúng việc ấy.
+
+Một phép kiểm chỉ đáng tin bằng việc nó **đỏ khi luật sai**, nên ba luật chịu lực nhất của trò
+chơi — sàn sáu phần mười, ngưỡng một nửa của bãi chăn, và trí nhớ một-lần-một-người — đã được thử
+bằng cách cố tình làm hỏng luật rồi xem có gì đỏ không. Bỏ sàn đi thì **bảy** phép kiểm đỏ; bỏ
+ngưỡng bãi chăn thì hai; bỏ trí nhớ một-lần-một-người thì hai.
+
+Bốn lỗi đã bắt được bằng cách ấy, và cả bốn đều **không báo gì cả** — chúng chỉ hiện ra như một
+tính năng không ai dùng được:
+
+- `raid()` đúng và đã được kiểm từ lâu, nhưng **không có đường nào từ cái khung tới nó**.
+- Ngưỡng lấy trộm so với một nửa của `output`, mà một con gà có `output = 20` và cả đời chỉ cho
+  được tám phần — nên với con gà ấy, ngưỡng không bao giờ mở.
+- Sản phẩm vật nuôi vào túi và **không có gì đọc ra**: bắt được mười quả trứng rồi nhận một con số
+  mình không thấy ở đâu, và không bán được.
+- Hai đường ghi vào cùng một túi bằng hai kiểu khoá khác nhau — `1001` và `"1001"`.
 
 Ba phép kiểm là bài kiểm số học của cả trò chơi, và chúng là lý do bảng số sinh ra từ bản gốc chứ
 không được nghĩ ra:

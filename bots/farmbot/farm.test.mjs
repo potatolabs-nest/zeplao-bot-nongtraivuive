@@ -19,6 +19,7 @@ import {
   newRanch, graze, penOf, emptyPen, feed, buy, collect, butcher, raid, catchMouse,
   openHouse, chores as ranchChores, hungry, hopperLasts, penFor, roomFor, houseAt,
   appetite, bite, STEAL_SHARE, MAX_FEED, MOUSE_CHANCE, HELP_EXP_PER_TEN, capacityOf,
+  MOUSE_HIT, HOURS_PER_FEED,
 } from './rules/ranch.mjs';
 import { ANIMALS, animalById, HOUSES, GRASS } from './rules/animals.mjs';
 
@@ -34,6 +35,34 @@ const always = () => 0;
 const never = () => 0.999999;
 
 const HOUR = 3600 * 1000;
+
+test('những con số của luật, ghim ở giá trị của QFarm', () => {
+  // Mấy con số này là **thiết kế**, không phải chi tiết cài đặt: chúng là chỗ bản port này khác
+  // QFarm và chỗ nó giống. Không có phép kiểm nào thì chúng trôi đi lặng lẽ trong một lần sửa
+  // không liên quan, và thứ mất đi là một luật chơi.
+  assert.equal(STEAL_MIN_COIN, 300, 'đi hái trộm phải có 300 đồng, và phải đang trồng cây');
+  assert.equal(WEED_PENALTY, 0.1, 'một thứ đang đứng là một phần mười vụ mùa');
+  assert.equal(WEED_PENALTY_CAP, 0.5, 'và trần là một nửa');
+  assert.equal(WEED_PENALTY_CAP / WEED_PENALTY, 5, 'nên trần là năm thứ');
+  assert.equal(DOG_CHANCE, 0.2, 'chó thường cắn được một phần năm số lần');
+  assert.equal(STEAL_FLOOR, 0.6, 'chủ ruộng giữ sáu phần mười');
+  assert.equal(STEAL_SHARE, 0.5, 'và bãi chăn chỉ bị lấy khi đã cho ra hơn một nửa');
+  assert.equal(PLANT_EXP, 2);
+  assert.equal(HELP_COIN, 2);
+  assert.equal(HELP_EXP, 2);
+  assert.equal(DAILY_COIN, 5000);
+  assert.equal(STARTING_COIN, 1000);
+  assert.equal(MAX_PLOTS, 18, 'mười tám thửa là trần — sáu hàng ba');
+  assert.equal(BAD_PER_DAY, 50, 'và hạn mức phá trong ngày');
+  assert.equal(BAD_MAX_PER_PLOT, 3);
+  assert.equal(HELP_EXP_PER_TEN, 1);
+  assert.equal(GRASS.perHours, 4, 'một con ăn `eats` bó mỗi bốn giờ');
+  assert.equal(GRASS.buy, 60, 'cỏ mua 60 đồng một bó');
+  assert.equal(GRASS.hopper, 1000);
+  assert.equal(HOURS_PER_FEED, 4);
+  assert.equal(MOUSE_CHANCE, 0.18);
+  assert.equal(MOUSE_HIT, 0.5);
+});
 
 // ---- bảng số sinh ra từ QFarm ----------------------------------------------------------------
 

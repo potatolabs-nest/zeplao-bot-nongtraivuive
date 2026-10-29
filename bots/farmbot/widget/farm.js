@@ -268,8 +268,11 @@ function drawRanch() {
 
   const row = $('feed-row');
   row.innerHTML = '';
-  row.appendChild(button(`Cho ăn 20 bó (${ranch.grass.buy}/bó nếu phải mua)`, {
+  row.appendChild(button(`Cho ăn 20 bó (${ranch.grass.buy} đồng một bó nếu phải mua)`, {
     kind: 'wide primary',
+    // Một bó cỏ bên cạnh chữ. Cho ăn là việc duy nhất của cả bãi chăn, và một cái nút có hình thì
+    // đọc ra trước khi đọc chữ — trên điện thoại, đó là toàn bộ sự khác nhau.
+    badge: `<span class="btn-art">${draw.grass()}</span>`,
     verdict: ranch.hopper >= ranch.hopperMax ? { ok: false, why: 'Máng đã đầy.' } : { ok: true },
     onPress: () => send({ feed: 20 }),
   }));

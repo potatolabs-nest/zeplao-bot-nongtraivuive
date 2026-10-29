@@ -287,4 +287,4 @@ function escape(text) {
  * Nên đường nối là một cái tên ở tầng toàn cục. Nó vừa là chỗ `farm.js` lấy hàm vẽ, vừa là thứ
  * `index.html` kiểm để biết file này **đã thật sự chạy** chứ không chỉ đã tải về.
  */
-window.farmArt = { plant, beast, grass, plot, pen, line, ago, until, escape, fruitColor };
+window.farmArt = { plant, beast, grass, plot, pen, line, ago, until, escape };

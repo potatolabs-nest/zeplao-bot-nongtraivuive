@@ -63,17 +63,17 @@ export const BOARD_SIZE = 20;
 export const LOG_KEPT = 20;
 
 import {
-  newFarm, advance, plotOf, emptyPlot, levelOf, expFor, progressTo, chores, ripePlots,
+  newFarm, advance, plotOf, emptyPlot, levelOf, progressTo, chores, ripePlots,
   isFarming, sow, water, weed, pest, harvest, pick, clear, steal, openLand, upgradeLand,
-  sowWeeds, sowPests, resetQuota, BAD_PER_DAY, BAD_MAX_PER_PLOT,
+  sowWeeds, sowPests, resetQuota, BAD_PER_DAY,
   seedsFor, cropById, sellPriceOf, seedPriceOf,
-  SPEED, PLANT_EXP, HELP_COIN, HELP_EXP, STEAL_MIN_COIN, DAILY_COIN, STARTING_COIN,
-  MAX_PLOTS, CROPS,
+  SPEED, PLANT_EXP, HELP_COIN, HELP_EXP, STEAL_MIN_COIN, DAILY_COIN,
+  MAX_PLOTS,
 } from './rules/farm.mjs';
 import {
   newRanch, graze, feed, buy, collect, butcher, raid, catchMouse, openHouse, emptyPen,
-  chores as ranchChores, hungry, hopperLasts, roomFor, penFor, houseAt, penCount, capacityOf,
-  animalById, ANIMALS, HOUSES, GRASS, MAX_FEED, HELP_EXP_PER_TEN,
+  chores as ranchChores, hungry, hopperLasts, houseAt, capacityOf,
+  animalById, ANIMALS, HOUSES, GRASS, MAX_FEED,
 } from './rules/ranch.mjs';
 
 /// Một ngày, tính bằng mili giây. Ngày đổi lúc nửa đêm giờ Việt Nam, không phải giờ UTC.

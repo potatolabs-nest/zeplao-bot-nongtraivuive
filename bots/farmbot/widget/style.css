@@ -272,6 +272,18 @@ html, body {
 .btn.wide { grid-column: 1 / -1; }
 .btn.small { padding: 7px 10px; font-size: 13px; }
 
+/* Hình trên một cái nút, cạnh chữ. Nằm trong luồng của nút nên `button()` không phải biết gì về
+   nó — và nó nhỏ, vì một cái nút là một câu trả lời chứ không phải một minh hoạ. */
+.btn-art {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+  margin-right: 6px;
+}
+
+.btn-art .art { width: 100%; height: 100%; }
+
 /* ---- màn của một thửa --------------------------------------------------------------------- */
 
 #sheet-head {

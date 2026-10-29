@@ -470,6 +470,11 @@ test('hai người ở hai nhóm khác nhau vẫn ghé được vườn nhau', a
     const crop = cropById(2);
     await nap((crop.cycle / 100000) * 1000 + 200);
 
+    // Chờ ảnh chụp **của chính người bấm**, không phải ảnh chụp mới nhất.
+    //
+    // Một lần ghé vườn đẩy trạng thái cho **chủ nhà trước** (`pushTo(targetId)`), nên "lần đẩy mới
+    // nhất" thường là của người kia — và một phép kiểm đọc nhầm trạng thái ấy sẽ đỏ ở một chỗ cách
+    // nguyên nhân cả trăm dòng. Đỏ ngẫu nhiên thì còn tệ hơn: nó xanh trên máy đã viết ra nó.
     const act = async (sessionId, conversationId, userId, action) => {
       const before = app.pushes.length;
       app.push({
@@ -480,7 +485,10 @@ test('hai người ở hai nhóm khác nhau vẫn ghé được vườn nhau', a
           role: 'player', action,
         },
       });
-      return app.until(() => (app.pushes.length > before ? app.pushes.at(-1).state : null), { ms: 1500 });
+      return app.until(() => {
+        const mine = app.pushes.slice(before).filter((one) => one.to === userId);
+        return mine.length ? mine.at(-1).state : null;
+      }, { ms: 1500 });
     };
 
     // An chạm khung để nó cập nhật, rồi Bình ghé hái trộm.
@@ -641,18 +649,29 @@ test('lấy trộm sản phẩm trong bãi chăn của hàng xóm', async () => 
 
     const robbed = await act(binhId, 'room-binh', 'user-binh',
       { visit: { who: FARMER.userId, what: 'raidAll' } });
+    // Đi lấy trộm phải có ít nhất 500 đồng trong túi — luật của QFarm, và là điều kiện dễ trượt
+    // nhất của phép kiểm này: nếu ví của Bình vơi đi vì một hành động khác thì phép kiểm dưới sẽ
+    // đỏ vì một lý do hoàn toàn khác với cái nó định kiểm. Nói ra ở đây thì lần đỏ ấy tự khai.
+    assert.ok(robbed.coin >= 500, `Bình phải còn đủ vốn để đi lấy trộm, đang có ${robbed.coin}`);
     assert.ok(robbed.goods.some((one) => one.id === 1001 && one.count > 0),
-      'trứng phải vào túi của Bình');
+      `trứng phải vào túi của Bình — túi ${JSON.stringify(robbed.goods)}`);
 
-    // Và An thấy bãi chăn mình vơi đi, cùng một dòng trong sổ.
+    // Và An có một dòng trong sổ ghi lại **bao nhiêu** đã mất.
+    //
+    // So hai lần đọc `ready` là một phép kiểm đỏ ngẫu nhiên, và đây là chỗ nó vỡ: con gà cho ra
+    // liên tục, nên giữa lúc bị lấy trộm và lúc An mở khung ra, nó lại đẻ về đúng mức trần — và
+    // "8 trước đó 8" đỏ dù việc lấy trộm đã xảy ra thật. Thứ **đơn điệu** là sổ: một dòng chỉ được
+    // ghi khi có gì đó thật sự rời khỏi chuồng, và con số trong đó là số đã rời đi.
     const back = await act(anId, 'room-an', FARMER.userId, { feed: 100 });
-    const left = back.ranch.pens.find((pen) => pen.animal)?.ready ?? 0;
-    assert.ok(left < fat[0].ready, `sản phẩm của An phải vơi đi, còn ${left} trước đó ${fat[0].ready}`);
-    assert.ok(back.log.some((line) => /lấy trộm/i.test(line.text)), 'sổ của An phải ghi lại');
+    const receipt = back.log.find((line) => /lấy trộm/i.test(line.text));
+    assert.ok(receipt, 'sổ của An phải ghi lại');
+    const lost = Number(/lấy trộm (\d+)/.exec(receipt.text)?.[1] ?? 0);
+    assert.equal(lost, 1, `một con chỉ bị lấy một đơn vị một lần, sổ ghi ${lost}`);
 
     // Và bán được. Một món vào túi mà không bán được là một món chỉ để nhìn.
+    const egg = robbed.goods.find((one) => one.id === 1001);
     const sold = await act(binhId, 'room-binh', 'user-binh', { sell: { goods: 1001 } });
-    assert.ok(sold.coin > robbed.coin, 'bán trứng phải ra tiền');
+    assert.equal(sold.coin, robbed.coin + egg.worth * egg.count, 'bán trứng được đúng giá của nó');
     assert.equal(sold.goods.find((one) => one.id === 1001)?.count ?? 0, 0, 'và túi phải sạch');
 
     // Một lần mỗi con mỗi người.
@@ -663,10 +682,14 @@ test('lấy trộm sản phẩm trong bãi chăn của hàng xóm', async () => 
     // tăng, còn một lần lấy trộm thứ hai sẽ làm nó giảm.
     const twice = await act(binhId, 'room-binh', 'user-binh',
       { visit: { who: FARMER.userId, what: 'raidAll' } });
-    const leftTwice = (await act(anId, 'room-an', FARMER.userId, { feed: 100 }))
-      .ranch.pens.find((pen) => pen.animal)?.ready ?? 0;
     assert.equal(twice.goods.length, 0, 'lần thứ hai không lấy được gì');
-    assert.ok(leftTwice >= left, `và con ấy không bị lấy hai lần (${leftTwice} < ${left})`);
+    // Và sổ của An vẫn chỉ có **một** dòng cho một lần ghé. Đây là phép kiểm bền cho "một lần mỗi
+    // con": một lần lấy trộm thứ hai sẽ ghi thêm một dòng, còn con gà đẻ thêm thì không ghi gì.
+    assert.ok(twice.log.some((line) => /chưa có gì để lấy/.test(line.text)),
+      'lần thứ hai phải nói ra rằng không còn gì — im lặng thì không phân biệt được với "đã lấy được"');
+    const anAgain = await act(anId, 'room-an', FARMER.userId, { feed: 100 });
+    assert.equal(anAgain.log.filter((line) => /lấy trộm/i.test(line.text)).length, 1,
+      'và sổ của An chỉ có một dòng cho một lần ghé');
   });
 });
 
